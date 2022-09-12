@@ -208,17 +208,17 @@ Project Link: [https://github.com/GetAlluo/alluo-exchange](https://github.com/Ge
 
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
-[contributors-shield]: https://img.shields.io/github/contributors/GetAlluo/alluo-exchange?style=for-the-badge
-[contributors-url]: https://github.com/GetAlluo/alluo-exchange/graphs/contributors
+[contributors-shield]: https://img.shields.io/github/contributors/GetAlluo/yield-booster?style=for-the-badge
+[contributors-url]: https://github.com/GetAlluo/yield-booster/graphs/contributors
 
-[forks-shield]: https://img.shields.io/github/forks/GetAlluo/alluo-exchange?style=for-the-badge
-[forks-url]: https://github.com/GetAlluo/alluo-exchange/network/members
+[forks-shield]: https://img.shields.io/github/forks/GetAlluo/yield-booster?style=for-the-badge
+[forks-url]: https://github.com/GetAlluo/yield-booster/network/members
 
-[stars-shield]: https://img.shields.io/github/stars/GetAlluo/alluo-exchange?style=for-the-badge
-[stars-url]: https://github.com/GetAlluo/alluo-exchange/stargazers
+[stars-shield]: https://img.shields.io/github/stars/GetAlluo/yield-booster?style=for-the-badge
+[stars-url]: https://github.com/GetAlluo/yield-booster/stargazers
 
-[issues-shield]: https://img.shields.io/github/issues/GetAlluo/alluo-exchange?style=for-the-badge
-[issues-url]: https://github.com/GetAlluo/alluo-exchange/issues
+[issues-shield]: https://img.shields.io/github/issues/GetAlluo/yield-booster?style=for-the-badge
+[issues-url]: https://github.com/GetAlluo/yield-booster/issues
 
 [discord-shield]: https://img.shields.io/badge/Discord-Join%20us-blue?style=for-the-badge
 [discord-url]: https://discord.gg/tuN3y3Tfe4
