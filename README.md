@@ -201,7 +201,7 @@ Distributed under the MIT License. See `LICENSE.txt` for more information.
 
 0xtuytuy.eth - [@0xtuytuy](https://twitter.com/0xtuytuy) - rt@alluo.com
 
-Project Link: [https://github.com/GetAlluo/alluo-exchange](https://github.com/GetAlluo/alluo-exchange)
+Project Link: [https://github.com/GetAlluo/yield-booster](https://github.com/GetAlluo/yield-booster)
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
