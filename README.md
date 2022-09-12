@@ -62,7 +62,7 @@
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
-This repo contains all the Alluo Yield Booster product, a series of smart contract allowing users of the Alluo protocol to boost LP reward yeild by combining Cureve and Convex power.
+This repo contains all the Alluo Yield Booster product, a series of smart contract allowing users of the Alluo protocol to boost LP reward yield by combining Curve and Convex power.
 <p align="right">(<a href="#top">back to top</a>)</p>
 
 
