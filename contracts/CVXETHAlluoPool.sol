@@ -69,10 +69,10 @@ contract CVXETHAlluoPool is Initializable, PausableUpgradeable, AccessControlUpg
         _grantRole(UPGRADER_ROLE, _multiSigWallet);
 
 
-        // TESTS ONLY:
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _grantRole(UPGRADER_ROLE, msg.sender);
-        _grantRole(VAULT, msg.sender);
+        // // TESTS ONLY:
+        // _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        // _grantRole(UPGRADER_ROLE, msg.sender);
+        // _grantRole(VAULT, msg.sender);
 
 
         vault = _vault;
@@ -98,6 +98,12 @@ contract CVXETHAlluoPool is Initializable, PausableUpgradeable, AccessControlUpg
             cvxBooster.deposit(poolId, rewardToken.balanceOf(address(this)), true);
         }
     }
+
+    function depositIntoBooster() external {
+        rewardToken.safeIncreaseAllowance(address(cvxBooster), rewardToken.balanceOf(address(this)));
+        cvxBooster.deposit(poolId, rewardToken.balanceOf(address(this)), true);
+    }
+    
     function withdraw(uint256 amount) external onlyRole(VAULT) {
         (, , , address pool, , ) = cvxBooster.poolInfo(poolId);
         ICvxBaseRewardPool(pool).withdrawAndUnwrap(amount, true);

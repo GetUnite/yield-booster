@@ -12,6 +12,8 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgrad
 import "@openzeppelin/contracts-upgradeable/utils/structs/EnumerableSetUpgradeable.sol";
 import "./interfaces/ICvxBooster.sol";
 import "./interfaces/ICvxBaseRewardPool.sol";
+import "./interfaces/IExchange.sol";
+import "./interfaces/ICurvePool.sol";
 
 import "hardhat/console.sol";
 
@@ -27,8 +29,12 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
 
     ICvxBooster public constant cvxBooster =
         ICvxBooster(0xF403C135812408BFbE8713b5A23a04b3D48AAE31);
+    IExchange public constant exchange =
+        IExchange(0x29c66CF57a03d41Cfe6d9ecB6883aa0E2AbA21Ec);
 
     bytes32 public constant  UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
+    bytes32 public constant  GELATO = keccak256("GELATO");
+
     address public trustedForwarder;
     bool public upgradeStatus;
     uint256 public rewardsPerShareAccumulated;
@@ -38,7 +44,11 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
     address public alluoPool;
     uint256 public poolId;
     EnumerableSetUpgradeable.AddressSet yieldTokens;
+    EnumerableSetUpgradeable.AddressSet poolTokens;
 
+    address public curvePool;
+    uint256 adminFee;
+    address public gnosis;
 
     using AddressUpgradeable for address;
     using SafeERC20Upgradeable for IERC20MetadataUpgradeable;
@@ -55,7 +65,9 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
         address _multiSigWallet,
         address _trustedForwarder,
         address[] memory _yieldTokens,
-        uint256 _poolId
+        address[] memory _poolTokens,
+        uint256 _poolId,
+        address _curvePool
     ) public initializer {
         __Pausable_init();
         __AccessControl_init();
@@ -65,31 +77,41 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
         alluoPool = _alluoPool;
         rewardToken = _rewardToken;
         poolId = _poolId;
+        curvePool = _curvePool;
         for (uint256 i; i < _yieldTokens.length; i++) {
             yieldTokens.add(_yieldTokens[i]);
+        }
+        for (uint256 i; i < _poolTokens.length; i++) {
+            poolTokens.add(_poolTokens[i]);
         }
 
         require(_multiSigWallet.isContract(), "BaseAlluoVault: Not contract");
         _grantRole(DEFAULT_ADMIN_ROLE, _multiSigWallet);
         _grantRole(UPGRADER_ROLE, _multiSigWallet);
+        _grantRole(GELATO, _multiSigWallet);
+
+
+        gnosis = _multiSigWallet;
         trustedForwarder = _trustedForwarder;
+        adminFee = 100;
     }
 
-    function loopRewards() external {
+    function loopRewards() external onlyRole(GELATO) {
         // Send tokens to pool first.
         // Then call the farm function that converts all rewards to LP tokens 
         claimRewardsFromPool();
-        uint256 _rewardBefore = IAlluoPool(alluoPool).fundsLocked();
+        uint256 rewardBefore = IAlluoPool(alluoPool).fundsLocked();
         for (uint256 i; i < yieldTokens.length(); i++) {
             address token = yieldTokens.at(i);
             uint256 balance = IERC20MetadataUpgradeable(token).balanceOf(address(this));
             IERC20MetadataUpgradeable(token).safeTransfer(alluoPool, balance);
         }
         IAlluoPool(alluoPool).farm();
-        uint256 _rewardAfter = IAlluoPool(alluoPool).fundsLocked();
-        uint256 newRewards = _rewardAfter - _rewardBefore;
-        // Account for fees later
-        // 
+        uint256 rewardAfter = IAlluoPool(alluoPool).fundsLocked();
+        uint256 totalRewards = rewardAfter - rewardBefore;
+        uint256 totalFees = totalRewards * adminFee / 10**4;
+        uint256 newRewards = totalRewards - totalFees;
+        rewards[gnosis] += totalFees;
         rewardsPerShareAccumulated += newRewards * 10**18 / totalSupply();
     }
 
@@ -125,6 +147,28 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
         return shares;
     }
  
+
+    function depositWithoutLP(uint256 assets, address entryToken) public  returns(uint256) {
+        _distributeReward(_msgSender());
+        IERC20MetadataUpgradeable(entryToken).safeTransferFrom(_msgSender(), address(this), assets);
+        if (!poolTokens.contains(entryToken)) {
+            IERC20MetadataUpgradeable(entryToken).safeIncreaseAllowance(address(exchange), assets);
+            assets = exchange.exchange(entryToken, poolTokens.at(0), assets, 0);
+            entryToken = poolTokens.at(0);
+        } 
+        IERC20MetadataUpgradeable(entryToken).safeIncreaseAllowance(curvePool, assets);
+        if (entryToken == poolTokens.at(0)) {
+            assets = ICurvePool(curvePool).add_liquidity([assets, 0], 0);
+        } else {
+            assets = ICurvePool(curvePool).add_liquidity([0, assets], 0);
+        }
+        require(assets <= maxDeposit(address(this)), "ERC4626: deposit more than max");
+        uint256 shares = previewDeposit(assets);
+        _mint(_msgSender(), shares);
+        emit Deposit(_msgSender(), _msgSender(), assets, shares);
+        return shares;
+    }
+
     function mint(uint256 shares, address receiver) public  override returns (uint256) {
         _distributeReward(_msgSender());
         require(shares <= maxMint(receiver), "ERC4626: mint more than max");
@@ -149,6 +193,35 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
 
         return shares;
     }
+
+
+    function withdrawToNonLp(
+        uint256 assets,
+        address receiver,
+        address owner,
+        address exitToken
+    ) public returns (uint256) {
+        _distributeReward(_msgSender());
+        require(assets <= maxWithdraw(owner), "ERC4626: withdraw more than max");
+        _unstakeForWithdraw(assets);
+        uint256 shares = previewWithdraw(assets);
+
+        if (exitToken == poolTokens.at(0)) {
+            shares = ICurvePool(curvePool).remove_liquidity_one_coin(shares, 0, 0);
+            IERC20MetadataUpgradeable(exitToken).safeTransfer(receiver, shares);
+
+        } else {
+            shares = ICurvePool(curvePool).remove_liquidity_one_coin(shares, 1, 0);
+            if (exitToken != poolTokens.at(1)) {
+                IERC20MetadataUpgradeable(poolTokens.at(1)).safeIncreaseAllowance(address(exchange),shares);
+                shares = exchange.exchange(poolTokens.at(1), exitToken, shares,0);
+            }
+            IERC20MetadataUpgradeable(exitToken).safeTransfer(receiver, shares);
+        }
+        return shares;
+    }
+
+
     /** @dev See {IERC4626-redeem}. */
     function redeem(
         uint256 shares,
@@ -163,7 +236,7 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
         return assets;
     }
 
-    function claimRewards() public {
+    function claimRewards() public returns (uint256) {
         _distributeReward(_msgSender());
         uint256 rewardTokens = rewards[_msgSender()];
         if (rewardTokens > 0) {
@@ -171,6 +244,7 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
             IAlluoPool(alluoPool).withdraw(rewardTokens);
             rewardToken.safeTransfer(_msgSender(), rewardTokens);
         }
+        return rewardTokens;
     }
     function _unstakeForWithdraw(uint256 amount) internal {
         uint256 availableBalance = IERC20MetadataUpgradeable(asset()).balanceOf(address(this));
@@ -200,6 +274,9 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
         alluoPool = _pool;
     }
 
+    function addPoolTokens(address _token) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        poolTokens.add(_token);
+    }
     function isTrustedForwarder(address forwarder)
         public
         view
@@ -232,6 +309,11 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
         _unpause();
     }
 
+    function setAdminFee(uint256 fee) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        adminFee = fee;
+    }
+
+
 
     function grantRole(bytes32 role, address account)
         public
@@ -239,14 +321,11 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
         onlyRole(getRoleAdmin(role))
     {
         if (role == DEFAULT_ADMIN_ROLE) {
-            require(account.isContract(), "IbAlluo: Not contract");
+            require(account.isContract(), "AlluoVault: Not contract");
         }
         _grantRole(role, account);
     }
-
-
-
-        function _msgSender()
+    function _msgSender()
         internal
         view
         virtual
