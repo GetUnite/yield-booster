@@ -4,10 +4,6 @@ import { AlluoVaultUpgradeable, CVXETHAlluoPool } from "../typechain";
 
 async function main() {
 
-  // Please double check the addresses below and MinSigns
-
-    const VoteExecutorMasterFactory = await ethers.getContractFactory("AlluoVaultUpgradeable");
-   
     let AlluoVaultFactory = await ethers.getContractFactory("AlluoVaultUpgradeable")
     let rewardToken = await ethers.getContractAt("IERC20MetadataUpgradeable", "0x3A283D9c08E8b55966afb64C515f5143cf907611");
     let fraxUSDC =  await ethers.getContractAt("IERC20MetadataUpgradeable", "0x3175Df0976dFA876431C2E9eE6Bc45b65d3473CC");
@@ -28,14 +24,15 @@ async function main() {
         rewardToken.address,
         rewardToken.address,
         gnosis,
-        gnosis,
+        "0x84a0856b038eaAd1cC7E297cF34A7e72685A8693",
         [crv.address, cvx.address],
         [frax.address, usdc.address],
         100,
         fraxUSDCPool.address
     ],  {
         initializer: 'initialize',
-        kind: 'uups'
+        kind: 'uups',
+        useDeployedImplementation: true
     }) as AlluoVaultUpgradeable;
     await AlluoVault.deployed();
     console.log("AlluoVault Deployed at :", AlluoVault.address);
@@ -47,13 +44,18 @@ async function main() {
         [crv.address, cvx.address],
         "0xB576491F1E6e5E62f1d8F26062Ee822B40B0E0d4", // Pool address
         64, //Pool number convex
-        AlluoVault.address,
+        "0x779cEbDb99c99E6777e645B97E61b8EFAc3Ee096",
+        // AlluoVault.address,
         cvx.address
-    ]) as CVXETHAlluoPool
+    ],  {
+          initializer: 'initialize',
+          kind: 'uups',
+          useDeployedImplementation: true
+      }) as CVXETHAlluoPool
 
     await alluoPool.deployed();
     console.log("Alluo Pool deployed at :", alluoPool.address)
-    await AlluoVault.setPool(alluoPool.address);
+    // await AlluoVault.setPool(alluoPool.address);
 }
 main()
   .then(() => process.exit(0))

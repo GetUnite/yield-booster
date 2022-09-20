@@ -47,7 +47,7 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
     EnumerableSetUpgradeable.AddressSet poolTokens;
 
     address public curvePool;
-    uint256 adminFee;
+    uint256 public adminFee;
     address public gnosis;
 
     using AddressUpgradeable for address;
@@ -246,6 +246,21 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
         }
         return rewardTokens;
     }
+
+    function claimRewardsInNonLp(address exitToken) public returns (uint256) {
+        _distributeReward(_msgSender());
+        uint256 rewardTokens = rewards[_msgSender()];
+        if (rewardTokens > 0) {
+            rewards[_msgSender()] = 0;
+            IAlluoPool(alluoPool).withdraw(rewardTokens);
+            rewardToken.safeIncreaseAllowance(address(exchange),rewardTokens);
+            rewardTokens = exchange.exchange(address(rewardToken), exitToken, rewardTokens,0);
+            IERC20MetadataUpgradeable(exitToken).safeTransfer(_msgSender(), rewardTokens);
+        }
+        return rewardTokens;
+    }
+
+
     function _unstakeForWithdraw(uint256 amount) internal {
         uint256 availableBalance = IERC20MetadataUpgradeable(asset()).balanceOf(address(this));
         if (availableBalance < amount) {
@@ -270,7 +285,7 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
     }
 
 
-    function setPool(address _pool) external {
+    function setPool(address _pool) external onlyRole(DEFAULT_ADMIN_ROLE) {
         alluoPool = _pool;
     }
 

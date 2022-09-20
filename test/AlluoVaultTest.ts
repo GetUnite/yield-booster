@@ -91,7 +91,7 @@ describe("Alluo Vault Tests", function() {
             rewardToken.address,
             rewardToken.address,
             gnosis,
-            gnosis,
+            "0x84a0856b038eaAd1cC7E297cF34A7e72685A8693",
             [crv.address, cvx.address],
             [frax.address, usdc.address],
             100,
