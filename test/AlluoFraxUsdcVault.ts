@@ -5,7 +5,7 @@ import { BigNumber, BigNumberish, BytesLike, Wallet } from "ethers";
 import { defaultAbiCoder } from "ethers/lib/utils";
 import { ethers, network, upgrades } from "hardhat";
 import { before } from "mocha";
-import { AlluoVaultUpgradeable, CVXETHAlluoPool, IAlluoPool, ICurvePool, ICvxBooster, IERC20MetadataUpgradeable, IExchange } from "../typechain";
+import { AlluoFraxUsdcVault, FraxUSDCVaultPool, IAlluoPool, ICurvePool, ICvxBooster, IERC20MetadataUpgradeable, IExchange } from "../typechain";
 
 
 async function getImpersonatedSigner(address: string): Promise<SignerWithAddress> {
@@ -28,7 +28,7 @@ describe("Alluo Vault Tests", function() {
     let cvxBooster: ICvxBooster;
     let exchange: IExchange;
     const ZERO_ADDR = ethers.constants.AddressZero;
-    let AlluoVault : AlluoVaultUpgradeable;
+    let AlluoVault : AlluoFraxUsdcVault;
     let rewardToken :IERC20MetadataUpgradeable;
     let fraxUSDC : IERC20MetadataUpgradeable;
     let alluoPool : IAlluoPool;
@@ -50,6 +50,8 @@ describe("Alluo Vault Tests", function() {
     })
 
     before(async () => {
+
+        console.log('\n', "||| Confirm that the _grantRoles(.., msg.sender) in AlluoFraxUsdcVault.sol has been uncommented to ensure tests are functioning correctly |||", '\n')
         signers = await ethers.getSigners();
 
         usdc = await ethers.getContractAt("IERC20MetadataUpgradeable", "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48")
@@ -82,7 +84,7 @@ describe("Alluo Vault Tests", function() {
         await frax.approve(fraxUSDCPool.address, ethers.constants.MaxUint256)
         await fraxUSDCPool.add_liquidity([parseEther("1000"),0],0);
         let gnosis = "0x6b140e772aCC4D5E0d5Eac3813D586aa6DB8Fbf7";
-        let AlluoVaultFactory = await ethers.getContractFactory("AlluoVaultUpgradeable")
+        let AlluoVaultFactory = await ethers.getContractFactory("AlluoFraxUsdcVault")
         
         AlluoVault = await upgrades.deployProxy(AlluoVaultFactory, [
             "Frax-USDC Vault",
@@ -99,9 +101,9 @@ describe("Alluo Vault Tests", function() {
         ],  {
             initializer: 'initialize',
             kind: 'uups'
-        }) as AlluoVaultUpgradeable;
+        }) as AlluoFraxUsdcVault;
 
-        let PoolVaultFactory = await ethers.getContractFactory("CVXETHAlluoPool");
+        let PoolVaultFactory = await ethers.getContractFactory("FraxUSDCVaultPool");
         alluoPool = await upgrades.deployProxy(PoolVaultFactory, [
             rewardToken.address,
             gnosis,
@@ -110,7 +112,7 @@ describe("Alluo Vault Tests", function() {
             64, //Pool number convex
             AlluoVault.address,
             cvx.address
-        ]) as CVXETHAlluoPool
+        ]) as FraxUSDCVaultPool
         await AlluoVault.setPool(alluoPool.address);
 
     });
@@ -224,7 +226,7 @@ describe("Alluo Vault Tests", function() {
         console.log(cvxAccumulated)
 
 
-        await alluoPool.farm();
+        await AlluoVault.loopRewards();
         const compoundedRewards = await alluoPool.fundsLocked();
 
         console.log("crv-ETH staked after", await alluoPool.fundsLocked());
@@ -273,7 +275,7 @@ describe("Alluo Vault Tests", function() {
         console.log(cvxAccumulated)
 
 
-        await alluoPool.farm();
+        await AlluoVault.loopRewards();
         const compoundedRewards = await alluoPool.fundsLocked();
 
         console.log("crv-ETH staked after", await alluoPool.fundsLocked());
@@ -441,7 +443,7 @@ describe("Alluo Vault Tests", function() {
             expect(Number(await rewardToken.balanceOf(signers[i].address)).toPrecision(5)).equal(Number(expectBalance).toPrecision(5))
             console.log(`Reward tokens for signer ${i}: ${await rewardToken.balanceOf(signers[i].address)}`)
         }
-
-        
+        let gnosis = "0x6b140e772aCC4D5E0d5Eac3813D586aa6DB8Fbf7";
+        expect(Number(await AlluoVault.rewards(gnosis))).greaterThan(0);
     }) 
 })

@@ -17,7 +17,7 @@ import "./interfaces/ICurvePool.sol";
 
 import "hardhat/console.sol";
 
-contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessControlUpgradeable, UUPSUpgradeable, ERC4626Upgradeable {
+contract AlluoFraxUsdcVault is Initializable, PausableUpgradeable, AccessControlUpgradeable, UUPSUpgradeable, ERC4626Upgradeable {
 
     // Deposit vs Mint
     // Deposit is adding an exact amount of underlying tokens
@@ -45,7 +45,7 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
     uint256 public poolId;
     EnumerableSetUpgradeable.AddressSet yieldTokens;
     EnumerableSetUpgradeable.AddressSet poolTokens;
-
+ 
     address public curvePool;
     uint256 public adminFee;
     address public gnosis;
@@ -89,6 +89,11 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
         _grantRole(DEFAULT_ADMIN_ROLE, _multiSigWallet);
         _grantRole(UPGRADER_ROLE, _multiSigWallet);
         _grantRole(GELATO, _multiSigWallet);
+
+        // ENABLE ONLY FOR TESTS
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(UPGRADER_ROLE, msg.sender);
+        _grantRole(GELATO, msg.sender);
 
 
         gnosis = _multiSigWallet;

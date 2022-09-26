@@ -20,7 +20,7 @@ import "./interfaces/ICurvePool.sol";
 import "hardhat/console.sol"; 
 
 
-contract CVXETHAlluoPool is Initializable, PausableUpgradeable, AccessControlUpgradeable, UUPSUpgradeable {
+contract StEthVaultPool is Initializable, PausableUpgradeable, AccessControlUpgradeable, UUPSUpgradeable {
 
     ICvxBooster public constant cvxBooster =
         ICvxBooster(0xF403C135812408BFbE8713b5A23a04b3D48AAE31);
@@ -69,10 +69,10 @@ contract CVXETHAlluoPool is Initializable, PausableUpgradeable, AccessControlUpg
         _grantRole(UPGRADER_ROLE, _multiSigWallet);
 
 
-        // // TESTS ONLY:
-        // _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        // _grantRole(UPGRADER_ROLE, msg.sender);
-        // _grantRole(VAULT, msg.sender);
+        // TESTS ONLY:
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(UPGRADER_ROLE, msg.sender);
+        _grantRole(VAULT, msg.sender);
 
 
         vault = _vault;
@@ -88,12 +88,12 @@ contract CVXETHAlluoPool is Initializable, PausableUpgradeable, AccessControlUpg
         for (uint256 i; i < yieldTokens.length(); i++) {
             address token = yieldTokens.at(i);
             uint256 balance = IERC20MetadataUpgradeable(token).balanceOf(address(this));
-            if (token != address(entryToken)) {
+            if (token != address(entryToken) && balance > 0) {
                 IERC20MetadataUpgradeable(token).safeIncreaseAllowance(address(exchange), balance);
                 balance = exchange.exchange(token, address(entryToken), balance, 0);
             }
             entryToken.safeIncreaseAllowance(curvePool, balance);
-            ICurvePool(curvePool).add_liquidity([0, balance], 0);
+            if (balance > 0) ICurvePool(curvePool).add_liquidity([0, balance], 0);
             rewardToken.safeIncreaseAllowance(address(cvxBooster), rewardToken.balanceOf(address(this)));
             cvxBooster.deposit(poolId, rewardToken.balanceOf(address(this)), true);
         }
