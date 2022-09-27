@@ -45,7 +45,7 @@ contract StEthVaultPool is Initializable, PausableUpgradeable, AccessControlUpgr
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() initializer {}
 
-  function initialize(
+    function initialize(
         IERC20MetadataUpgradeable _rewardToken,
         address _multiSigWallet,
         address[] memory _yieldTokens,
@@ -80,10 +80,12 @@ contract StEthVaultPool is Initializable, PausableUpgradeable, AccessControlUpgr
 
     }
 
+
+    /// @notice Claims all rewards, exchange all rewards for LPs and stake them
+    /// @dev Exchanges all rewards (including those sent by the vault) for the entryToken, adds liquidity for LP tokens and then stakes them
+    ///      This function is not to be called directly, but rather through the vault contract it is linked to.
     function farm() onlyRole(VAULT) external {
-        // Swap to CVX
-        // Get CVX-ETH LP
-        // Stake in Convex
+        // Claim rewards
         claimRewardsFromPool();
         for (uint256 i; i < yieldTokens.length(); i++) {
             address token = yieldTokens.at(i);
@@ -92,28 +94,40 @@ contract StEthVaultPool is Initializable, PausableUpgradeable, AccessControlUpgr
                 IERC20MetadataUpgradeable(token).safeIncreaseAllowance(address(exchange), balance);
                 balance = exchange.exchange(token, address(entryToken), balance, 0);
             }
-            entryToken.safeIncreaseAllowance(curvePool, balance);
-            if (balance > 0) ICurvePool(curvePool).add_liquidity([0, balance], 0);
+        }
+        uint256 entryTokenBalance = IERC20MetadataUpgradeable(entryToken).balanceOf(address(this));
+        if (entryTokenBalance > 0) {
+            entryToken.safeIncreaseAllowance(curvePool, entryTokenBalance);
+            ICurvePool(curvePool).add_liquidity([0, entryTokenBalance], 0);
             rewardToken.safeIncreaseAllowance(address(cvxBooster), rewardToken.balanceOf(address(this)));
             cvxBooster.deposit(poolId, rewardToken.balanceOf(address(this)), true);
         }
     }
 
+    /// @notice Simply stakes all LP tokens if for some reason they are not staked
     function depositIntoBooster() external {
         rewardToken.safeIncreaseAllowance(address(cvxBooster), rewardToken.balanceOf(address(this)));
         cvxBooster.deposit(poolId, rewardToken.balanceOf(address(this)), true);
     }
     
+    /// @notice Unstakes from convex and sends it back to the vault to allow withdrawals of principal
+    /// @param amount Amount of lpTokens to unwrap
     function withdraw(uint256 amount) external onlyRole(VAULT) {
         (, , , address pool, , ) = cvxBooster.poolInfo(poolId);
         ICvxBaseRewardPool(pool).withdrawAndUnwrap(amount, true);
         rewardToken.safeTransfer(vault, amount);
     }
+
+    /// @notice Returns total amount staked. 
+    /// @dev Used to calculate total amount of assets locked in the vault
+    /// @return uint256 balance of staked tokens
     function fundsLocked() external view returns (uint256) {
         (,,, address rewardPool,,) =  cvxBooster.poolInfo(poolId);
         return ICvxBaseRewardPool(rewardPool).balanceOf(address(this));
     }
 
+    /// @notice Claims all rewards from the convex pool
+    /// @dev This is used to claim rewards when looping
     function claimRewardsFromPool() public {
         (,,, address rewardPool,,) =  cvxBooster.poolInfo(poolId);
          ICvxBaseRewardPool(rewardPool).getReward();

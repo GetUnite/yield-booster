@@ -101,6 +101,8 @@ contract AlluoFraxUsdcVault is Initializable, PausableUpgradeable, AccessControl
         adminFee = 100;
     }
 
+    /// @notice Loop called periodically to compound reward tokens into the respective alluo pool
+    /// @dev Claims rewards, transfers all rewards to the alluoPool. Then, the pool is farmed and rewards are credited accordingly per share.
     function loopRewards() external onlyRole(GELATO) {
         // Send tokens to pool first.
         // Then call the farm function that converts all rewards to LP tokens 
@@ -120,6 +122,8 @@ contract AlluoFraxUsdcVault is Initializable, PausableUpgradeable, AccessControl
         rewardsPerShareAccumulated += newRewards * 10**18 / totalSupply();
     }
 
+    /// @notice Stakes all underlying LP tokens that are not already staked. 
+    /// @dev Also claims rewards. This function should be called before loopRewards if Lps are not staked.
     function stakeUnderlying() external {
         IERC20MetadataUpgradeable underlying = IERC20MetadataUpgradeable(asset());
         underlying.safeIncreaseAllowance(address(cvxBooster), underlying.balanceOf(address(this)));
@@ -128,22 +132,36 @@ contract AlluoFraxUsdcVault is Initializable, PausableUpgradeable, AccessControl
          ICvxBaseRewardPool(pool).getReward();
     }
     
+    /// @notice Claims all rewards
+    /// @dev Used when looping rewards
     function claimRewardsFromPool() public {
         (, , , address pool, , ) = cvxBooster.poolInfo(poolId);
          ICvxBaseRewardPool(pool).getReward();
     }
 
+    /// @notice Accordingly credits the account with accumulated rewards 
+    /// @dev Gives the correct reward per share using the earned view function and then ensures that this is accounted for.
+    /// @param account Shareholder
     function _distributeReward(address account) internal {
         rewards[account] = earned(account);
         userRewardPaid[account] = rewardsPerShareAccumulated;
     }
 
+    /// @notice Calculates the total amount of undistributed rewards an account has a claim to
+    /// @dev First calculate the amount per share not paid and then multiply this by the amount of shares the user owns.
+    /// @param account Shareholder
     function earned(address account) public view returns (uint256) {
         uint256 rewardsDelta = rewardsPerShareAccumulated - userRewardPaid[account];
         uint256 undistributedRewards = balanceOf(account) * rewardsDelta / 10**18 ;
         return undistributedRewards + rewards[account];
     }
 
+
+    /// @notice Deposits an amount of LP underlying and mints shares in the vault.
+    /// @dev Read the difference between deposit and mint at the start of the contract. Makes sure to distribute rewards before any actions occur
+    /// @param assets Amount of assets deposited
+    /// @param receiver Recipient of shares
+    /// @return New amount of shares minted
     function deposit(uint256 assets, address receiver) public override returns(uint256) {
         _distributeReward(_msgSender());
         require(assets <= maxDeposit(receiver), "ERC4626: deposit more than max");
@@ -152,7 +170,12 @@ contract AlluoFraxUsdcVault is Initializable, PausableUpgradeable, AccessControl
         return shares;
     }
  
-
+    /// @notice Deposits an amount of any ERC20 and mints shares in the vault.
+    /// @dev Read the difference between deposit and mint at the start of the contract. Makes sure to distribute rewards before any actions occur
+    ///      Converts all the entry tokens to a token eligible for adding liquidity. Then carry out same deposit procedure
+    /// @param assets Amount of assets deposited
+    /// @param entryToken Recipient of shares
+    /// @return New amount of shares minted
     function depositWithoutLP(uint256 assets, address entryToken) public  returns(uint256) {
         _distributeReward(_msgSender());
         IERC20MetadataUpgradeable(entryToken).safeTransferFrom(_msgSender(), address(this), assets);
@@ -174,17 +197,20 @@ contract AlluoFraxUsdcVault is Initializable, PausableUpgradeable, AccessControl
         return shares;
     }
 
+    /** @dev See {IERC4626-mint}.**/
+    /// Standard ERC4626 mint function but distributes rewards before deposits
     function mint(uint256 shares, address receiver) public  override returns (uint256) {
         _distributeReward(_msgSender());
         require(shares <= maxMint(receiver), "ERC4626: mint more than max");
         uint256 assets = previewMint(shares);
         _deposit(_msgSender(), receiver, assets, shares);
-
         return assets;
     }
 
 
     /** @dev See {IERC4626-withdraw}. */
+    /// Standard ERC4626 withdraw function but distributes rewards before withdraw
+    //  and unstakes from the alluoPool in order to meet collateral commitments
     function withdraw(
         uint256 assets,
         address receiver,
@@ -195,11 +221,17 @@ contract AlluoFraxUsdcVault is Initializable, PausableUpgradeable, AccessControl
         _unstakeForWithdraw(assets);
         uint256 shares = previewWithdraw(assets);
         _withdraw(_msgSender(), receiver, owner, assets, shares);
-
         return shares;
     }
 
 
+    /// @notice Allows withdrawals in any ERC20 token supported by the Alluo Exchange
+    /// @dev 
+    /// @param assets  Amount of vault shares to burn
+    /// @param receiver Recipient of the tokens
+    /// @param owner Standrad ERC4626 owner 
+    /// @param exitToken Token that you want to receive by burning shares in the vault and the Lp token
+    /// @return uint256 amount of exitToken assets received
     function withdrawToNonLp(
         uint256 assets,
         address receiver,
@@ -228,6 +260,7 @@ contract AlluoFraxUsdcVault is Initializable, PausableUpgradeable, AccessControl
 
 
     /** @dev See {IERC4626-redeem}. */
+    /// Same but simply distributes rewards and unstakes from the alluo pool to meet withdrawals
     function redeem(
         uint256 shares,
         address receiver,
@@ -241,6 +274,9 @@ contract AlluoFraxUsdcVault is Initializable, PausableUpgradeable, AccessControl
         return assets;
     }
 
+    /// @notice Allows users to claim their rewards
+    /// @dev Withdraws all reward tokens from the alluo pool and sends it to the user.
+    /// @return Uint256 value of total reward tokens
     function claimRewards() public returns (uint256) {
         _distributeReward(_msgSender());
         uint256 rewardTokens = rewards[_msgSender()];
@@ -252,6 +288,9 @@ contract AlluoFraxUsdcVault is Initializable, PausableUpgradeable, AccessControl
         return rewardTokens;
     }
 
+    /// @notice Allows users to claim their rewards in an ERC20 supported by the Alluo exchange
+    /// @dev Withdraws all reward tokens from the alluo pool and sends it to the user after exchanging it.
+    /// @return Uint256 value of total reward tokens in exitTokens
     function claimRewardsInNonLp(address exitToken) public returns (uint256) {
         _distributeReward(_msgSender());
         uint256 rewardTokens = rewards[_msgSender()];
@@ -265,7 +304,9 @@ contract AlluoFraxUsdcVault is Initializable, PausableUpgradeable, AccessControl
         return rewardTokens;
     }
 
-
+    /// @notice Internal function used to unstake and meet collateral requirements on withdrawals
+    /// @param amount Amount of tokens to unstake
+    /// @dev Simply unwraps the amount needed to meet the withdrawal
     function _unstakeForWithdraw(uint256 amount) internal {
         uint256 availableBalance = IERC20MetadataUpgradeable(asset()).balanceOf(address(this));
         if (availableBalance < amount) {
