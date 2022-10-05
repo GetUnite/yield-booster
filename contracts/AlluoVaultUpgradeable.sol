@@ -17,7 +17,7 @@ import "./interfaces/ICurvePool.sol";
 
 import "hardhat/console.sol";
 
-contract AlluoFraxUsdcVault is Initializable, PausableUpgradeable, AccessControlUpgradeable, UUPSUpgradeable, ERC4626Upgradeable {
+contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessControlUpgradeable, UUPSUpgradeable, ERC4626Upgradeable {
 
     // Deposit vs Mint
     // Deposit is adding an exact amount of underlying tokens
@@ -53,6 +53,8 @@ contract AlluoFraxUsdcVault is Initializable, PausableUpgradeable, AccessControl
     using AddressUpgradeable for address;
     using SafeERC20Upgradeable for IERC20MetadataUpgradeable;
     using EnumerableSetUpgradeable for EnumerableSetUpgradeable.AddressSet;
+    using MathUpgradeable for uint256;
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() initializer {}
 
@@ -120,6 +122,11 @@ contract AlluoFraxUsdcVault is Initializable, PausableUpgradeable, AccessControl
         uint256 newRewards = totalRewards - totalFees;
         rewards[gnosis] += totalFees;
         rewardsPerShareAccumulated += newRewards * 10**18 / totalSupply();
+
+        // Disable for Sepolia:
+        // uint256 newRewards = 10**5;
+        // rewardsPerShareAccumulated += newRewards * 10**18 / totalSupply();
+
     }
 
     /// @notice Stakes all underlying LP tokens that are not already staked. 
@@ -179,23 +186,22 @@ contract AlluoFraxUsdcVault is Initializable, PausableUpgradeable, AccessControl
     function depositWithoutLP(uint256 assets, address entryToken) public  returns(uint256) {
         _distributeReward(_msgSender());
         IERC20MetadataUpgradeable(entryToken).safeTransferFrom(_msgSender(), address(this), assets);
-        if (!poolTokens.contains(entryToken)) {
-            IERC20MetadataUpgradeable(entryToken).safeIncreaseAllowance(address(exchange), assets);
-            assets = exchange.exchange(entryToken, poolTokens.at(0), assets, 0);
-            entryToken = poolTokens.at(0);
-        } 
-        IERC20MetadataUpgradeable(entryToken).safeIncreaseAllowance(curvePool, assets);
-        if (entryToken == poolTokens.at(0)) {
-            assets = ICurvePool(curvePool).add_liquidity([assets, 0], 0);
-        } else {
-            assets = ICurvePool(curvePool).add_liquidity([0, assets], 0);
-        }
-        require(assets <= maxDeposit(address(this)), "ERC4626: deposit more than max");
-        uint256 shares = previewDeposit(assets);
+        IERC20MetadataUpgradeable(entryToken).safeIncreaseAllowance(address(exchange), assets);
+        assets = exchange.exchange(entryToken,asset(),assets,0);
+        require(assets <= _nonLpMaxDeposit(assets), "ERC4626: deposit more than max");
+        uint256 shares = _nonLpPreviewDeposit(assets);
         _mint(_msgSender(), shares);
         emit Deposit(_msgSender(), _msgSender(), assets, shares);
         return shares;
     }
+    function _nonLpMaxDeposit(uint256 assets) internal view returns (uint256) {
+        return totalAssets() - assets > 0 || totalSupply() == 0 ? type(uint256).max : 0;
+    }
+    function _nonLpPreviewDeposit(uint256 assets ) internal view returns (uint256) {
+        uint256 supply = totalSupply();
+        return (assets == 0 || supply == 0) ? assets: assets.mulDiv(supply, totalAssets() - assets, MathUpgradeable.Rounding.Down);
+    }
+
 
     /** @dev See {IERC4626-mint}.**/
     /// Standard ERC4626 mint function but distributes rewards before deposits
@@ -242,19 +248,13 @@ contract AlluoFraxUsdcVault is Initializable, PausableUpgradeable, AccessControl
         require(assets <= maxWithdraw(owner), "ERC4626: withdraw more than max");
         _unstakeForWithdraw(assets);
         uint256 shares = previewWithdraw(assets);
-
-        if (exitToken == poolTokens.at(0)) {
-            shares = ICurvePool(curvePool).remove_liquidity_one_coin(shares, 0, 0);
-            IERC20MetadataUpgradeable(exitToken).safeTransfer(receiver, shares);
-
-        } else {
-            shares = ICurvePool(curvePool).remove_liquidity_one_coin(shares, 1, 0);
-            if (exitToken != poolTokens.at(1)) {
-                IERC20MetadataUpgradeable(poolTokens.at(1)).safeIncreaseAllowance(address(exchange),shares);
-                shares = exchange.exchange(poolTokens.at(1), exitToken, shares,0);
-            }
-            IERC20MetadataUpgradeable(exitToken).safeTransfer(receiver, shares);
+        if (_msgSender() != owner) {
+            _spendAllowance(owner, _msgSender(), shares);
         }
+        _burn(owner, shares);
+        IERC20MetadataUpgradeable(asset()).safeIncreaseAllowance(address(exchange), shares);
+        shares = exchange.exchange(asset(), exitToken, shares,0);
+        IERC20MetadataUpgradeable(exitToken).safeTransfer(receiver, shares);
         return shares;
     }
 
@@ -282,6 +282,7 @@ contract AlluoFraxUsdcVault is Initializable, PausableUpgradeable, AccessControl
         uint256 rewardTokens = rewards[_msgSender()];
         if (rewardTokens > 0) {
             rewards[_msgSender()] = 0;
+            // Disable for Sepolia
             IAlluoPool(alluoPool).withdraw(rewardTokens);
             rewardToken.safeTransfer(_msgSender(), rewardTokens);
         }
@@ -296,6 +297,7 @@ contract AlluoFraxUsdcVault is Initializable, PausableUpgradeable, AccessControl
         uint256 rewardTokens = rewards[_msgSender()];
         if (rewardTokens > 0) {
             rewards[_msgSender()] = 0;
+            // Disable for Sepolia
             IAlluoPool(alluoPool).withdraw(rewardTokens);
             rewardToken.safeIncreaseAllowance(address(exchange),rewardTokens);
             rewardTokens = exchange.exchange(address(rewardToken), exitToken, rewardTokens,0);
@@ -322,6 +324,8 @@ contract AlluoFraxUsdcVault is Initializable, PausableUpgradeable, AccessControl
     function stakedBalanceOf() public view returns (uint256) {
          (, , , address pool, , ) = cvxBooster.poolInfo(poolId);
         return ICvxBaseRewardPool(pool).balanceOf(address(this));
+        // // Disable for sepolia
+        // return 0;
     }
     function _beforeTokenTransfer(address from, address to, uint256 amount) internal virtual override
     {
