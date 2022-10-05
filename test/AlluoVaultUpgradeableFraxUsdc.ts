@@ -252,22 +252,22 @@ describe("Frax USDC Alluo Vault Upgradeable Tests", function() {
         expect(Number(cvxAccumulated)).greaterThan(0)
     })
 
-    // it("Deposit usdt to enter pool (non pool token).", async function() {
+    it("Deposit usdt to enter pool (non pool token).", async function() {
 
-    //     const usdtBalance = parseUnits("100",6);
-    //     await usdt.approve(AlluoVault.address, ethers.constants.MaxUint256);
-    //     await AlluoVault.depositWithoutLP(usdtBalance, usdt.address);
-    //     await AlluoVault.stakeUnderlying();
-    //     await skipDays(0.01);
-    //     await AlluoVault.claimRewardsFromPool();
+        const usdtBalance = parseUnits("100",6);
+        await usdt.approve(AlluoVault.address, ethers.constants.MaxUint256);
+        await AlluoVault.depositWithoutLP(usdtBalance, usdt.address);
+        await AlluoVault.stakeUnderlying();
+        await skipDays(0.01);
+        await AlluoVault.claimRewardsFromPool();
 
-    //     const crvAccumulated = await crv.balanceOf(AlluoVault.address);
-    //     const cvxAccumulated = await cvx.balanceOf(AlluoVault.address);
-    //     console.log(crvAccumulated)
-    //     console.log(cvxAccumulated)
-    //     expect(Number(crvAccumulated)).greaterThan(0)
-    //     expect(Number(cvxAccumulated)).greaterThan(0)
-    // })
+        const crvAccumulated = await crv.balanceOf(AlluoVault.address);
+        const cvxAccumulated = await cvx.balanceOf(AlluoVault.address);
+        console.log(crvAccumulated)
+        console.log(cvxAccumulated)
+        expect(Number(crvAccumulated)).greaterThan(0)
+        expect(Number(cvxAccumulated)).greaterThan(0)
+    })
 
     it("Deposit usdc to enter pool and exit again in USDC", async function() {
         // const fraxBalance = await frax.balanceOf(signers[0].address);
@@ -284,16 +284,16 @@ describe("Frax USDC Alluo Vault Upgradeable Tests", function() {
 
     })
 
-    // it("Deposit usdt to enter pool (non pool token) and exit again in a non pool token.", async function() {
-    //     const usdtBalance = parseUnits("100",6);
-    //     await usdt.approve(AlluoVault.address, ethers.constants.MaxUint256);
-    //     await AlluoVault.depositWithoutLP(usdtBalance, usdt.address);
-    //     await AlluoVault.stakeUnderlying();
-    //     await skipDays(0.01);
-    //     await AlluoVault.claimRewardsFromPool();
-    //     const lpBalance = await AlluoVault.balanceOf(signers[0].address);
-    //     await AlluoVault.withdrawToNonLp(lpBalance, signers[0].address, signers[0].address, usdt.address)
-    // })
+    it("Deposit usdt to enter pool (non pool token) and exit again in a non pool token.", async function() {
+        const usdtBalance = parseUnits("100",6);
+        await usdt.approve(AlluoVault.address, ethers.constants.MaxUint256);
+        await AlluoVault.depositWithoutLP(usdtBalance, usdt.address);
+        await AlluoVault.stakeUnderlying();
+        await skipDays(0.01);
+        await AlluoVault.claimRewardsFromPool();
+        const lpBalance = await AlluoVault.balanceOf(signers[0].address);
+        await AlluoVault.withdrawToNonLp(lpBalance, signers[0].address, signers[0].address, usdt.address)
+    })
 
     it("Multiple deposits and withdrawals should return correct LP amounts", async function() {
         let signerBalancesBefore =[]
