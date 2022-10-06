@@ -376,6 +376,73 @@ describe("StEth Alluo Vault Upgradeable Tests", function() {
             console.log(`Reward tokens for signer ${i}: ${await rewardToken.balanceOf(signers[i].address)}`)
         }
     })
+
+    it("Multiple deposits in nonLP tokens should return correct LP amounts and reward distribution (equal here)", async function() {
+        for (let i = 1; i < 6; i++) {
+            await exchange.connect(signers[i]).exchange(
+                ZERO_ADDR, frax.address, parseEther("10"), 0, { value: parseEther("10") }
+            )
+            const fraxBalance = parseEther("100");
+            await frax.connect(signers[i]).approve(AlluoVault.address, ethers.constants.MaxUint256);
+            await AlluoVault.connect(signers[i]).depositWithoutLP(fraxBalance, frax.address);
+
+            console.log(`Signer ${i}:`, await AlluoVault.balanceOf(signers[i].address));
+        }
+        await AlluoVault.stakeUnderlying();
+        await skipDays(0.01);
+        expect(await AlluoVault.totalSupply()).equal(await AlluoVault.totalAssets());
+
+        await AlluoVault.claimRewardsFromPool();
+        await AlluoVault.loopRewards();
+        await skipDays(0.01);
+        await AlluoVault.connect(signers[1]).claimRewards();
+        let expectBalance = await rewardToken.balanceOf(signers[1].address)
+
+        for (let i = 2; i < 6; i++) {
+            await AlluoVault.connect(signers[i]).claimRewards();
+            // Small dust
+            expect(Number(await rewardToken.balanceOf(signers[i].address)).toPrecision(5)).equal(Number(expectBalance).toPrecision(5))
+            console.log(`Reward tokens for signer ${i}: ${await rewardToken.balanceOf(signers[i].address)}`)
+        }
+    }) 
+
+   
+    it("Multiple deposits and withdrawals in nonLP tokens should return correct LP amounts and reward distribution (equal here)", async function() {
+        for (let i = 1; i < 6; i++) {
+            await exchange.connect(signers[i]).exchange(
+                ZERO_ADDR, frax.address, parseEther("10"), 0, { value: parseEther("10") }
+            )
+            const fraxBalance = parseEther("100");
+            await frax.connect(signers[i]).approve(AlluoVault.address, ethers.constants.MaxUint256);
+            await AlluoVault.connect(signers[i]).depositWithoutLP(fraxBalance, frax.address);
+
+            console.log(`Signer ${i}:`, await AlluoVault.balanceOf(signers[i].address));
+        }
+        await AlluoVault.stakeUnderlying();
+        await skipDays(0.01);
+        await AlluoVault.claimRewardsFromPool();
+        await AlluoVault.loopRewards();
+        await skipDays(0.01);
+        await AlluoVault.connect(signers[1]).claimRewards();
+        await AlluoVault.connect(signers[1]).withdrawToNonLp(await AlluoVault.balanceOf(signers[1].address), signers[1].address, signers[1].address, frax.address);
+        expect(await AlluoVault.balanceOf(signers[1].address)).equal(0);
+
+        let expectBalance = await rewardToken.balanceOf(signers[1].address)
+        for (let i = 2; i < 6; i++) {
+            await AlluoVault.connect(signers[i]).claimRewards();
+            await AlluoVault.connect(signers[i]).withdrawToNonLp(await AlluoVault.balanceOf(signers[i].address), signers[i].address, signers[i].address, frax.address);
+            // Small dust
+            expect(Number(await rewardToken.balanceOf(signers[i].address)).toPrecision(5)).equal(Number(expectBalance).toPrecision(5))
+            expect(Number(await rewardToken.balanceOf(signers[i].address)).toPrecision(5)).equal(Number(expectBalance).toPrecision(5))
+            expect(await AlluoVault.balanceOf(signers[i].address)).equal(0);
+            console.log(`Reward tokens for signer ${i}: ${await rewardToken.balanceOf(signers[i].address)}`)
+        }
+        expect(await AlluoVault.totalSupply()).equal(await AlluoVault.totalAssets());
+
+    }) 
+
+
+
     it("After some loops, the multisig should be able to claim fees accumulated.", async function () {
         let gnosis = "0x6b140e772aCC4D5E0d5Eac3813D586aa6DB8Fbf7";
 

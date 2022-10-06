@@ -93,9 +93,9 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
         _grantRole(GELATO, _multiSigWallet);
 
         // ENABLE ONLY FOR TESTS
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _grantRole(UPGRADER_ROLE, msg.sender);
-        _grantRole(GELATO, msg.sender);
+        // _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        // _grantRole(UPGRADER_ROLE, msg.sender);
+        // _grantRole(GELATO, msg.sender);
 
 
         gnosis = _multiSigWallet;
@@ -176,7 +176,7 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
         _deposit(_msgSender(), receiver, assets, shares);
         return shares;
     }
- 
+
     /// @notice Deposits an amount of any ERC20 and mints shares in the vault.
     /// @dev Read the difference between deposit and mint at the start of the contract. Makes sure to distribute rewards before any actions occur
     ///      Converts all the entry tokens to a token eligible for adding liquidity. Then carry out same deposit procedure
@@ -197,6 +197,7 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
     function _nonLpMaxDeposit(uint256 assets) internal view returns (uint256) {
         return totalAssets() - assets > 0 || totalSupply() == 0 ? type(uint256).max : 0;
     }
+
     function _nonLpPreviewDeposit(uint256 assets ) internal view returns (uint256) {
         uint256 supply = totalSupply();
         return (assets == 0 || supply == 0) ? assets: assets.mulDiv(supply, totalAssets() - assets, MathUpgradeable.Rounding.Down);
@@ -257,7 +258,6 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
         IERC20MetadataUpgradeable(exitToken).safeTransfer(receiver, shares);
         return shares;
     }
-
 
     /** @dev See {IERC4626-redeem}. */
     /// Same but simply distributes rewards and unstakes from the alluo pool to meet withdrawals
