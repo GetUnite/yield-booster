@@ -20,7 +20,7 @@ import "./interfaces/ICurvePool.sol";
 import "hardhat/console.sol"; 
 
 
-contract StEthVaultPool is Initializable, PausableUpgradeable, AccessControlUpgradeable, UUPSUpgradeable {
+contract AlluoVaultPool is Initializable, PausableUpgradeable, AccessControlUpgradeable, UUPSUpgradeable {
 
     ICvxBooster public constant cvxBooster =
         ICvxBooster(0xF403C135812408BFbE8713b5A23a04b3D48AAE31);
