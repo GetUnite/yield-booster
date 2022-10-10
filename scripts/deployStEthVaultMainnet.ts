@@ -30,7 +30,8 @@ async function main() {
         stEthEthPool.address
     ], {
         initializer: 'initialize',
-        kind: 'uups'
+        kind: 'uups',
+        useDeployedImplementation: true
     }) as AlluoVaultUpgradeable;
     console.log("Alluo Vault at:", AlluoVault.address)
 
@@ -43,7 +44,11 @@ async function main() {
         64, //Pool number convex
         AlluoVault.address,
         cvx.address
-    ]) as AlluoVaultPool
+    ], {
+      initializer: 'initialize',
+      kind: 'uups',
+      useDeployedImplementation: true
+  }) as AlluoVaultPool
     console.log("Alluo Pool at:", alluoPool.address)
 
     console.log("Make sure to set the pool through gnosis")

@@ -28,9 +28,10 @@ async function main() {
         64,
         cvxEthPool.address
     ], {
-        initializer: 'initialize',
-        kind: 'uups'
-    }) as AlluoVaultUpgradeable;
+      initializer: 'initialize',
+      kind: 'uups',
+      useDeployedImplementation: true
+  }) as AlluoVaultUpgradeable;
     console.log("Alluo Vault at:", AlluoVault.address)
 
     let PoolVaultFactory = await ethers.getContractFactory("AlluoVaultPool");
@@ -42,7 +43,12 @@ async function main() {
         64, //Pool number convex
         AlluoVault.address,
         cvx.address
-    ]) as AlluoVaultPool
+    ],
+    {
+      initializer: 'initialize',
+      kind: 'uups',
+      useDeployedImplementation: true
+  }) as AlluoVaultPool
 
     console.log("Alluo Pool at:", alluoPool.address)
 
