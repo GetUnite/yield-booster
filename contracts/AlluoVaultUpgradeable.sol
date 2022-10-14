@@ -15,6 +15,7 @@ import "./interfaces/ICvxBaseRewardPool.sol";
 import "./interfaces/IExchange.sol";
 import "./interfaces/ICurvePool.sol";
 
+import "hardhat/console.sol";
 contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessControlUpgradeable, UUPSUpgradeable, ERC4626Upgradeable {
 
     // Deposit vs Mint
@@ -48,15 +49,22 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
     uint256 public adminFee;
     address public gnosis;
 
+    uint256 vaultRewardsBefore;
+
     using AddressUpgradeable for address;
     using SafeERC20Upgradeable for IERC20MetadataUpgradeable;
     using EnumerableSetUpgradeable for EnumerableSetUpgradeable.AddressSet;
     using MathUpgradeable for uint256;
 
+    struct RewardData {
+        address token;
+        uint256 amount;
+    }
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() initializer {}
 
-  function initialize(
+    function initialize(
         string memory _name,
         string memory _symbol,
         IERC20MetadataUpgradeable _underlying,
@@ -91,39 +99,74 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
         _grantRole(GELATO, _multiSigWallet);
 
         // ENABLE ONLY FOR TESTS
-        // _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        // _grantRole(UPGRADER_ROLE, msg.sender);
-        // _grantRole(GELATO, msg.sender);
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(UPGRADER_ROLE, msg.sender);
+        _grantRole(GELATO, msg.sender);
 
         gnosis = _multiSigWallet;
         trustedForwarder = _trustedForwarder;
-        adminFee = 100;
+        adminFee = 0;
     }
 
     /// @notice Loop called periodically to compound reward tokens into the respective alluo pool
     /// @dev Claims rewards, transfers all rewards to the alluoPool. Then, the pool is farmed and rewards are credited accordingly per share.
-    function loopRewards() external onlyRole(GELATO) {
-        // Send tokens to pool first.
-        // Then call the farm function that converts all rewards to LP tokens 
+    function loopRewards() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        // The vaultRewardsBefore is set in the same call right before the rewardToken balance is increased to allow for this calculation to work.
+        uint256 vaultRewardAfter = IAlluoPool(alluoPool).rewardTokenBalance();
+        uint256 totalRewards = vaultRewardAfter - vaultRewardsBefore;
+        if (totalRewards > 0) {
+            uint256 totalFees = totalRewards * adminFee / 10**4;
+            uint256 newRewards = totalRewards - totalFees;
+            rewards[gnosis] += totalFees;
+            rewardsPerShareAccumulated += newRewards * 10**18 / totalSupply();
+        }
+        console.log("Vault reward after", vaultRewardAfter);
+        console.log("Vault rewards before", vaultRewardsBefore);
+        console.log("Total rewards", totalRewards);
+    }
+
+    function claimAndConvertToPoolEntryToken(address entryToken) external onlyRole(DEFAULT_ADMIN_ROLE) {
         claimRewardsFromPool();
-        uint256 rewardBefore = IAlluoPool(alluoPool).fundsLocked();
         for (uint256 i; i < yieldTokens.length(); i++) {
             address token = yieldTokens.at(i);
             uint256 balance = IERC20MetadataUpgradeable(token).balanceOf(address(this));
-            IERC20MetadataUpgradeable(token).safeTransfer(alluoPool, balance);
+            if (token != address(entryToken) && balance > 0) {
+                IERC20MetadataUpgradeable(token).safeIncreaseAllowance(address(exchange), balance);
+                balance = exchange.exchange(token, address(entryToken), balance, 0);
+            }
         }
-        IAlluoPool(alluoPool).farm();
-        uint256 rewardAfter = IAlluoPool(alluoPool).fundsLocked();
-        uint256 totalRewards = rewardAfter - rewardBefore;
-        uint256 totalFees = totalRewards * adminFee / 10**4;
-        uint256 newRewards = totalRewards - totalFees;
-        rewards[gnosis] += totalFees;
-        rewardsPerShareAccumulated += newRewards * 10**18 / totalSupply();
+        IERC20MetadataUpgradeable(entryToken).safeIncreaseAllowance(alluoPool, IERC20MetadataUpgradeable(entryToken).balanceOf(address(this)));
+        vaultRewardsBefore = IAlluoPool(alluoPool).rewardTokenBalance();
+    }
+    function accruedRewards() public view returns (RewardData[] memory) {
+        (, , , address pool, , ) = cvxBooster.poolInfo(poolId);
+        ICvxBaseRewardPool mainCvxPool = ICvxBaseRewardPool(pool);
+        uint256 extraRewardsLength = mainCvxPool.extraRewardsLength();
+        RewardData[] memory rewardArray = new RewardData[](extraRewardsLength + 1);
+        rewardArray[0] = RewardData(mainCvxPool.rewardToken(),mainCvxPool.earned(address(this)));
+        for (uint256 i; i < extraRewardsLength; i++) {
+            ICvxBaseRewardPool extraReward = ICvxBaseRewardPool(mainCvxPool.extraRewards(i));
+            rewardArray[i+1] = (RewardData(extraReward.rewardToken(), extraReward.earned(address(this))));
+        }
+        return rewardArray;
+    }
 
-        // Disable for Sepolia:
-        // uint256 newRewards = 10**5;
-        // rewardsPerShareAccumulated += newRewards * 10**18 / totalSupply();
-
+    function shareholderAccruedRewards(address shareholder) public view returns (RewardData[] memory, IAlluoPool.RewardData[] memory) {
+        RewardData[] memory vaultAccruals = accruedRewards();
+        IAlluoPool.RewardData[] memory poolAccruals = IAlluoPool(alluoPool).accruedRewards();
+    
+        for (uint256 i; i < vaultAccruals.length; i++) {
+            uint256 userShareOfVaultAccruals = vaultAccruals[i].amount * balanceOf(shareholder) / totalSupply();
+            vaultAccruals[i].amount = userShareOfVaultAccruals;
+        }
+        for (uint256 i; i < poolAccruals.length; i++) {
+            if (IAlluoPool(alluoPool).totalBalances() == 0) {
+                break;
+            }
+            uint256 vaultShareOfPoolAccruals = poolAccruals[i].amount * IAlluoPool(alluoPool).balances(address(this)) / IAlluoPool(alluoPool).totalBalances();
+            poolAccruals[i].amount = vaultShareOfPoolAccruals * balanceOf(shareholder) / totalSupply();
+        }
+        return (vaultAccruals, poolAccruals);
     }
 
     /// @notice Stakes all underlying LP tokens that are not already staked. 

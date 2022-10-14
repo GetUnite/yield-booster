@@ -34,7 +34,6 @@ describe("StEth Alluo Vault Upgradeable Tests", function() {
     let alluoPool: IAlluoPool;
 
     before(async function () {
-        //We are forking Polygon mainnet, please set Alchemy key in .env
         await network.provider.request({
             method: "hardhat_reset",
             params: [{
@@ -50,7 +49,22 @@ describe("StEth Alluo Vault Upgradeable Tests", function() {
     })
 
     before(async () => {
+    
+    });
 
+    beforeEach(async () => {
+
+        await network.provider.request({
+            method: "hardhat_reset",
+            params: [{
+                forking: {
+                    enabled: true,
+                    jsonRpcUrl: process.env.MAINNET_FORKING_URL as string,
+                    //you can fork from last block by commenting next line
+                    blockNumber: 15717570,
+                },
+            },],
+        });
         signers = await ethers.getSigners();
 
         usdc = await ethers.getContractAt("IERC20MetadataUpgradeable", "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48")
@@ -81,21 +95,7 @@ describe("StEth Alluo Vault Upgradeable Tests", function() {
             ZERO_ADDR, usdc.address, value, 0, { value: value }
         )
 
-        // Set up new route for exchange:
-        const CurveStEthAdapter = await ethers.getContractFactory("CurveStEthAdapter");
-        const deployedAdapter = await CurveStEthAdapter.deploy();
-        const stEthEthPool = await ethers.getContractAt("ICurvePool", "0xDC24316b9AE028F1497c275EB9192a3Ea0f67022")
-
-        let gnosis = await getImpersonatedSigner("0x1F020A4943EB57cd3b2213A66b355CB662Ea43C3")
-        await signers[0].sendTransaction({to: gnosis.address, value: parseEther("100")})
-
-        await exchange.connect(gnosis).registerAdapters([deployedAdapter.address], [10])
-        let stEthEdge = { swapProtocol: 10, pool: stEthEthPool.address, fromCoin: stEthEth.address, toCoin: weth.address};
-        await (await exchange.connect(gnosis).createMinorCoinEdge([stEthEdge])).wait();
     
-    });
-
-    beforeEach(async () => {
         const stEthEthPool = await ethers.getContractAt("ICurvePool", "0xDC24316b9AE028F1497c275EB9192a3Ea0f67022")
         await stEthEthPool.add_liquidity([parseEther("1"), 0], 0, { value: parseEther("1") });
         let gnosis = "0x6b140e772aCC4D5E0d5Eac3813D586aa6DB8Fbf7";
@@ -122,13 +122,15 @@ describe("StEth Alluo Vault Upgradeable Tests", function() {
         alluoPool = await upgrades.deployProxy(PoolVaultFactory, [
             rewardToken.address,
             gnosis,
-            [crv.address, cvx.address, ldo.address],
+            [crv.address, cvx.address],
+            [AlluoVault.address],
             "0xB576491F1E6e5E62f1d8F26062Ee822B40B0E0d4", // Pool address
             64, //Pool number convex
-            AlluoVault.address,
             cvx.address
         ]) as AlluoVaultPool
         await AlluoVault.setPool(alluoPool.address);
+    
+        await AlluoVault.grantRole("0x0000000000000000000000000000000000000000000000000000000000000000", alluoPool.address)
     });
 
     afterEach(async () => {
@@ -174,7 +176,8 @@ describe("StEth Alluo Vault Upgradeable Tests", function() {
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
         await AlluoVault.claimRewardsFromPool();
-        await AlluoVault.loopRewards();
+
+        await alluoPool.farm();
         console.log("crv-ETH staked", await alluoPool.fundsLocked());
         expect(Number(await alluoPool.fundsLocked())).greaterThan(0);
     })
@@ -187,7 +190,7 @@ describe("StEth Alluo Vault Upgradeable Tests", function() {
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
         await AlluoVault.claimRewardsFromPool();
-        await AlluoVault.loopRewards();
+        await alluoPool.farm();
         const initialRewards = await alluoPool.fundsLocked();
 
 
@@ -204,7 +207,7 @@ describe("StEth Alluo Vault Upgradeable Tests", function() {
         console.log(ldoAccumulated)
 
 
-        await AlluoVault.loopRewards();
+        await alluoPool.farm();
         const compoundedRewards = await alluoPool.fundsLocked();
 
         console.log("crv-ETH staked after", await alluoPool.fundsLocked());
@@ -218,7 +221,7 @@ describe("StEth Alluo Vault Upgradeable Tests", function() {
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
         await AlluoVault.claimRewardsFromPool();
-        await AlluoVault.loopRewards();
+        await alluoPool.farm();
 
         await AlluoVault.withdraw(lpBalance, signers[0].address, signers[0].address);
         await AlluoVault.claimRewards();
@@ -364,7 +367,7 @@ describe("StEth Alluo Vault Upgradeable Tests", function() {
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
         await AlluoVault.claimRewardsFromPool();
-        await AlluoVault.loopRewards();
+        await alluoPool.farm();
         await skipDays(0.01);
         await AlluoVault.connect(signers[1]).claimRewards();
         let expectBalance = await rewardToken.balanceOf(signers[1].address)
@@ -391,7 +394,7 @@ describe("StEth Alluo Vault Upgradeable Tests", function() {
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
         await AlluoVault.claimRewardsFromPool();
-        await AlluoVault.loopRewards();
+        await alluoPool.farm();
         await skipDays(0.01);
         await AlluoVault.connect(signers[1]).claimRewards();
         await AlluoVault.connect(signers[1]).withdrawToNonLp(await AlluoVault.balanceOf(signers[1].address), signers[1].address, signers[1].address, frax.address);
@@ -402,7 +405,7 @@ describe("StEth Alluo Vault Upgradeable Tests", function() {
             await AlluoVault.connect(signers[i]).claimRewards();
             await AlluoVault.connect(signers[i]).withdrawToNonLp(await AlluoVault.balanceOf(signers[i].address), signers[i].address, signers[i].address, frax.address);
             // Small dust
-            expect(Number(await rewardToken.balanceOf(signers[i].address)).toPrecision(3)).equal(Number(expectBalance).toPrecision(3))
+            expect(Number(await rewardToken.balanceOf(signers[i].address)).toPrecision(2)).equal(Number(expectBalance).toPrecision(2))
             expect(await AlluoVault.balanceOf(signers[i].address)).equal(0);
             console.log(`Reward tokens for signer ${i}: ${await rewardToken.balanceOf(signers[i].address)}`)
         }
@@ -413,6 +416,8 @@ describe("StEth Alluo Vault Upgradeable Tests", function() {
 
 
     it("After some loops, the multisig should be able to claim fees accumulated.", async function () {
+        await AlluoVault.setAdminFee(100)
+
         let gnosis = "0x6b140e772aCC4D5E0d5Eac3813D586aa6DB8Fbf7";
 
         for (let i = 1; i < 6; i++) {
@@ -429,7 +434,7 @@ describe("StEth Alluo Vault Upgradeable Tests", function() {
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
         await AlluoVault.claimRewardsFromPool();
-        await AlluoVault.loopRewards();
+        await alluoPool.farm();
         await skipDays(0.01);
 
         expect(Number(await AlluoVault.earned(gnosis))).greaterThan(0);

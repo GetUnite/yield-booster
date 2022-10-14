@@ -204,4 +204,6 @@ interface IAlluoVault {
         address receiver,
         address owner
     ) external returns (uint256);
+
+    function claimAndConvertToPoolEntryToken(address entryToken) external;
 }

@@ -33,8 +33,9 @@ describe("Frax USDC Alluo Vault Upgradeable Tests", function() {
     let fraxUSDC : IERC20MetadataUpgradeable;
     let alluoPool : IAlluoPool;
 
-    before(async function () {
-        //We are forking Polygon mainnet, please set Alchemy key in .env
+
+
+    beforeEach(async () => {
         await network.provider.request({
             method: "hardhat_reset",
             params: [{
@@ -42,15 +43,10 @@ describe("Frax USDC Alluo Vault Upgradeable Tests", function() {
                     enabled: true,
                     jsonRpcUrl: process.env.MAINNET_FORKING_URL as string,
                     //you can fork from last block by commenting next line
-                    blockNumber: 15426472,
+                    blockNumber: 15717570,
                 },
             },],
         });
-
-    })
-
-    before(async () => {
-
         console.log('\n', "||| Confirm that the _grantRoles(.., msg.sender) in AlluoVaultUpgradeable.sol has been uncommented to ensure tests are functioning correctly |||", '\n')
         signers = await ethers.getSigners();
 
@@ -78,19 +74,7 @@ describe("Frax USDC Alluo Vault Upgradeable Tests", function() {
             ZERO_ADDR, usdc.address, value, 0, { value: value }
         )
 
-        // Set up new route for exchange:
-        const FraxUsdcAdapter = await ethers.getContractFactory("CurveFraxUsdcAdapter");
-        const deployedAdapter = await FraxUsdcAdapter.deploy();
-        const fraxUSDCPool=  await ethers.getContractAt("ICurvePool", "0xDcEF968d416a41Cdac0ED8702fAC8128A64241A2")
 
-        let gnosis = await getImpersonatedSigner("0x1F020A4943EB57cd3b2213A66b355CB662Ea43C3")
-        await exchange.connect(gnosis).registerAdapters([deployedAdapter.address], [10])
-        let fraxUSDCEdge = { swapProtocol: 10, pool: fraxUSDCPool.address, fromCoin: fraxUSDC.address, toCoin: usdc.address };
-        await (await exchange.connect(gnosis).createMinorCoinEdge([fraxUSDCEdge])).wait();
-
-    });
-
-    beforeEach(async () => {
         const fraxUSDCPool=  await ethers.getContractAt("ICurvePool", "0xDcEF968d416a41Cdac0ED8702fAC8128A64241A2")
         await frax.approve(fraxUSDCPool.address, ethers.constants.MaxUint256)
         await fraxUSDCPool.add_liquidity([parseEther("1000"),0],0);
@@ -115,16 +99,19 @@ describe("Frax USDC Alluo Vault Upgradeable Tests", function() {
         }) as AlluoVaultUpgradeable;
 
         let PoolVaultFactory = await ethers.getContractFactory("AlluoVaultPool");
+      
         alluoPool = await upgrades.deployProxy(PoolVaultFactory, [
             rewardToken.address,
             gnosis,
             [crv.address, cvx.address],
+            [AlluoVault.address],
             "0xB576491F1E6e5E62f1d8F26062Ee822B40B0E0d4", // Pool address
             64, //Pool number convex
-            AlluoVault.address,
             cvx.address
         ]) as AlluoVaultPool
         await AlluoVault.setPool(alluoPool.address);
+    
+        await AlluoVault.grantRole("0x0000000000000000000000000000000000000000000000000000000000000000", alluoPool.address)
 
     });
 
@@ -165,7 +152,8 @@ describe("Frax USDC Alluo Vault Upgradeable Tests", function() {
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
         await AlluoVault.claimRewardsFromPool();
-        await AlluoVault.loopRewards();
+
+        await alluoPool.farm();
         console.log("crv-ETH staked", await alluoPool.fundsLocked());
         expect(Number(await alluoPool.fundsLocked())).greaterThan(0);
     })
@@ -176,7 +164,7 @@ describe("Frax USDC Alluo Vault Upgradeable Tests", function() {
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
         await AlluoVault.claimRewardsFromPool();
-        await AlluoVault.loopRewards();
+        await alluoPool.farm();
        
         await AlluoVault.withdraw(lpBalance, signers[0].address, signers[0].address);
         await AlluoVault.claimRewards();
@@ -196,7 +184,7 @@ describe("Frax USDC Alluo Vault Upgradeable Tests", function() {
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
         await AlluoVault.claimRewardsFromPool();
-        await AlluoVault.loopRewards();
+        await alluoPool.farm();
         const initialRewards = await alluoPool.fundsLocked();
 
 
@@ -210,7 +198,7 @@ describe("Frax USDC Alluo Vault Upgradeable Tests", function() {
         console.log(cvxAccumulated)
 
 
-        await AlluoVault.loopRewards();
+        await alluoPool.farm();
         const compoundedRewards = await alluoPool.fundsLocked();
 
         console.log("crv-ETH staked after", await alluoPool.fundsLocked());
@@ -339,7 +327,7 @@ describe("Frax USDC Alluo Vault Upgradeable Tests", function() {
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
         await AlluoVault.claimRewardsFromPool();
-        await AlluoVault.loopRewards();
+        await alluoPool.farm();
         await skipDays(0.01);
         await AlluoVault.connect(signers[1]).claimRewards();
         let expectBalance = await rewardToken.balanceOf(signers[1].address)
@@ -368,7 +356,7 @@ describe("Frax USDC Alluo Vault Upgradeable Tests", function() {
         expect(await AlluoVault.totalSupply()).equal(await AlluoVault.totalAssets());
 
         await AlluoVault.claimRewardsFromPool();
-        await AlluoVault.loopRewards();
+        await alluoPool.farm();
         await skipDays(0.01);
         await AlluoVault.connect(signers[1]).claimRewards();
         let expectBalance = await rewardToken.balanceOf(signers[1].address)
@@ -398,7 +386,7 @@ describe("Frax USDC Alluo Vault Upgradeable Tests", function() {
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
         await AlluoVault.claimRewardsFromPool();
-        await AlluoVault.loopRewards();
+        await alluoPool.farm();
         await skipDays(0.01);
 
         expect(await AlluoVault.totalSupply()).equal(await AlluoVault.totalAssets());
@@ -435,7 +423,7 @@ describe("Frax USDC Alluo Vault Upgradeable Tests", function() {
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
         await AlluoVault.claimRewardsFromPool();
-        await AlluoVault.loopRewards();
+        await alluoPool.farm();
         await skipDays(0.01);
         await AlluoVault.connect(signers[1]).claimRewards();
         await AlluoVault.connect(signers[1]).withdrawToNonLp(await AlluoVault.balanceOf(signers[1].address), signers[1].address, signers[1].address, frax.address);
@@ -455,6 +443,7 @@ describe("Frax USDC Alluo Vault Upgradeable Tests", function() {
     }) 
 
     it("After some loops, the multisig should be able to claim fees accumulated.", async function() {
+        await AlluoVault.setAdminFee(100)
         for (let i = 1; i < 6; i++) {
             await exchange.connect(signers[i]).exchange(
                 ZERO_ADDR, frax.address, parseEther("10"), 0, { value: parseEther("10") }
@@ -470,7 +459,7 @@ describe("Frax USDC Alluo Vault Upgradeable Tests", function() {
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
         await AlluoVault.claimRewardsFromPool();
-        await AlluoVault.loopRewards();
+        await alluoPool.farm();
         await skipDays(0.01);
 
         let gnosis = "0x6b140e772aCC4D5E0d5Eac3813D586aa6DB8Fbf7";

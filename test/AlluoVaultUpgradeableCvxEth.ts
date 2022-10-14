@@ -118,17 +118,20 @@ describe("Cvx Eth Alluo Vault Upgradeable Tests", function() {
         }) as AlluoVaultUpgradeable;
         let PoolVaultFactory = await ethers.getContractFactory("AlluoVaultPool");
 
+
         alluoPool = await upgrades.deployProxy(PoolVaultFactory, [
             rewardToken.address,
             gnosis,
             [crv.address, cvx.address],
+            [AlluoVault.address],
             "0xB576491F1E6e5E62f1d8F26062Ee822B40B0E0d4", // Pool address
             64, //Pool number convex
-            AlluoVault.address,
             cvx.address
         ]) as AlluoVaultPool
         await AlluoVault.setPool(alluoPool.address);
-
+    
+        await AlluoVault.grantRole("0x0000000000000000000000000000000000000000000000000000000000000000", alluoPool.address)
+        
     });
 
     afterEach(async () => {
@@ -168,7 +171,9 @@ describe("Cvx Eth Alluo Vault Upgradeable Tests", function() {
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
         await AlluoVault.claimRewardsFromPool();
-        await AlluoVault.loopRewards();
+
+        await alluoPool.farm();
+
         console.log("crv-ETH staked", await alluoPool.fundsLocked());
         expect(Number(await alluoPool.fundsLocked())).greaterThan(0);
     })
@@ -180,7 +185,8 @@ describe("Cvx Eth Alluo Vault Upgradeable Tests", function() {
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
         await AlluoVault.claimRewardsFromPool();
-        await AlluoVault.loopRewards();
+                await alluoPool.farm();
+
        
         await AlluoVault.withdraw(lpBalance, signers[0].address, signers[0].address);
         await AlluoVault.claimRewards();
@@ -201,7 +207,8 @@ describe("Cvx Eth Alluo Vault Upgradeable Tests", function() {
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
         await AlluoVault.claimRewardsFromPool();
-        await AlluoVault.loopRewards();
+        await alluoPool.farm();
+
         const initialRewards = await alluoPool.fundsLocked();
 
 
@@ -215,7 +222,8 @@ describe("Cvx Eth Alluo Vault Upgradeable Tests", function() {
         console.log(cvxAccumulated)
 
 
-        await AlluoVault.loopRewards();
+        await alluoPool.farm();
+
         const compoundedRewards = await alluoPool.fundsLocked();
 
         console.log("crv-ETH staked after", await alluoPool.fundsLocked());
@@ -338,7 +346,8 @@ describe("Cvx Eth Alluo Vault Upgradeable Tests", function() {
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
         await AlluoVault.claimRewardsFromPool();
-        await AlluoVault.loopRewards();
+        await alluoPool.farm();
+
         await skipDays(0.01);
         await AlluoVault.connect(signers[1]).claimRewards();
         let expectBalance = await rewardToken.balanceOf(signers[1].address)
@@ -366,7 +375,8 @@ describe("Cvx Eth Alluo Vault Upgradeable Tests", function() {
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
         await AlluoVault.claimRewardsFromPool();
-        await AlluoVault.loopRewards();
+        await alluoPool.farm();
+
         await skipDays(0.01);
         await AlluoVault.connect(signers[1]).claimRewards();
         await AlluoVault.connect(signers[1]).withdrawToNonLp(await AlluoVault.balanceOf(signers[1].address), signers[1].address, signers[1].address, frax.address);
@@ -386,6 +396,7 @@ describe("Cvx Eth Alluo Vault Upgradeable Tests", function() {
     }) 
 
     it("After some loops, the multisig should be able to claim fees accumulated.", async function() {
+        await AlluoVault.setAdminFee(100);
         for (let i = 1; i < 6; i++) {
             await exchange.connect(signers[i]).exchange(
                 ZERO_ADDR, cvxEth.address, parseEther("10"), 0, { value: parseEther("10") }
@@ -398,7 +409,8 @@ describe("Cvx Eth Alluo Vault Upgradeable Tests", function() {
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
         await AlluoVault.claimRewardsFromPool();
-        await AlluoVault.loopRewards();
+        await alluoPool.farm();
+
         await skipDays(0.01);
         await AlluoVault.connect(signers[1]).claimRewards();
         let gnosis = "0x1F020A4943EB57cd3b2213A66b355CB662Ea43C3"
