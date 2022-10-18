@@ -154,12 +154,14 @@ describe("Cvx Eth Alluo Vault Upgradeable Tests", function() {
         await AlluoVault.deposit(lpBalance, signers[0].address);
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
+        console.log("Shareholder accumulated", await AlluoVault.shareholderAccruedRewards(signers[0].address));
+
         await AlluoVault.claimRewardsFromPool();
 
         const crvAccumulated = await crv.balanceOf(AlluoVault.address);
         const cvxAccumulated = await cvx.balanceOf(AlluoVault.address);
         console.log(crvAccumulated)
-        console.log(cvxAccumulated)
+        console.log(cvxAccumulated)        
         expect(Number(crvAccumulated)).greaterThan(0)
         expect(Number(cvxAccumulated)).greaterThan(0)
     })
@@ -170,8 +172,6 @@ describe("Cvx Eth Alluo Vault Upgradeable Tests", function() {
         await AlluoVault.deposit(lpBalance, signers[0].address);
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
-        await AlluoVault.claimRewardsFromPool();
-
         await alluoPool.farm();
 
         console.log("crv-ETH staked", await alluoPool.fundsLocked());
@@ -184,8 +184,7 @@ describe("Cvx Eth Alluo Vault Upgradeable Tests", function() {
 
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
-        await AlluoVault.claimRewardsFromPool();
-                await alluoPool.farm();
+        await alluoPool.farm();
 
        
         await AlluoVault.withdraw(lpBalance, signers[0].address, signers[0].address);
@@ -206,7 +205,6 @@ describe("Cvx Eth Alluo Vault Upgradeable Tests", function() {
         await AlluoVault.deposit(lpBalance, signers[0].address);
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
-        await AlluoVault.claimRewardsFromPool();
         await alluoPool.farm();
 
         const initialRewards = await alluoPool.fundsLocked();
@@ -237,6 +235,8 @@ describe("Cvx Eth Alluo Vault Upgradeable Tests", function() {
         await AlluoVault.depositWithoutLP(fraxBalance, frax.address);
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
+        console.log("Shareholder accumulated", await AlluoVault.shareholderAccruedRewards(signers[0].address));
+
         await AlluoVault.claimRewardsFromPool();
 
         const crvAccumulated = await crv.balanceOf(AlluoVault.address);

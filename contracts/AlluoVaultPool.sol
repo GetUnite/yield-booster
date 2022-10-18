@@ -18,7 +18,6 @@ import "./interfaces/ICvxBaseRewardPool.sol";
 import "./interfaces/ICurvePool.sol";
 import "./interfaces/IAlluoVault.sol";
 
-import "hardhat/console.sol"; 
 
 
 contract AlluoVaultPool is Initializable, PausableUpgradeable, AccessControlUpgradeable, UUPSUpgradeable {
@@ -85,9 +84,9 @@ contract AlluoVaultPool is Initializable, PausableUpgradeable, AccessControlUpgr
 
 
         // TESTS ONLY:
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _grantRole(UPGRADER_ROLE, msg.sender);
-        _grantRole(VAULT, msg.sender);
+        // _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        // _grantRole(UPGRADER_ROLE, msg.sender);
+        // _grantRole(VAULT, msg.sender);
 
 
 
@@ -105,28 +104,22 @@ contract AlluoVaultPool is Initializable, PausableUpgradeable, AccessControlUpgr
             uint256 balance = IERC20MetadataUpgradeable(token).balanceOf(address(this));
             if (token != address(entryToken) && balance > 0) {
                 IERC20MetadataUpgradeable(token).safeIncreaseAllowance(address(exchange), balance);
-                balance = exchange.exchange(token, address(entryToken), balance, 0);
+                exchange.exchange(token, address(entryToken), balance, 0);
             }
         }
         uint256 totalPoolEntryTokenYield = entryToken.balanceOf(address(this));
-        console.log("");
-        console.log("TotalPoolEntryTokenYield", totalPoolEntryTokenYield);
 
         // 2. Get all the rewards  from the different vaults and keep track of how much entryToken it is worth for each vault
         uint256 totalVaultEntryTokenDeposits;
         uint256[] memory entryTokenDeposits = new uint256[](vaults.length());
         for (uint256 i; i < vaults.length(); i++) {
             address _vault = vaults.at(i);
-            IAlluoVault(_vault).claimAndConvertToPoolEntryToken(address(entryToken));
-            uint256 vaultEntryTokenBalance = entryToken.balanceOf(_vault);
-            console.log("vaultEntryTokenBalance", i,":", vaultEntryTokenBalance);
-            entryToken.transferFrom(_vault, address(this), vaultEntryTokenBalance);
+            uint256 vaultEntryTokenBalance = IAlluoVault(_vault).claimAndConvertToPoolEntryToken(address(entryToken));
             totalVaultEntryTokenDeposits += vaultEntryTokenBalance;
             entryTokenDeposits[i] = vaultEntryTokenBalance;
         }
         // 3. Convert all entryToken balance (rewards by booster + rewards from vault) into reward tokens and then stake into convex
         uint256 entryTokenBalance = entryToken.balanceOf(address(this));
-        console.log("EntryTokenBalance", entryTokenBalance);
         uint256 newRewardTokens;
         if (entryTokenBalance > 0) {
             entryToken.safeIncreaseAllowance(address(exchange), entryTokenBalance);
@@ -139,18 +132,12 @@ contract AlluoVaultPool is Initializable, PausableUpgradeable, AccessControlUpgr
 
         uint256 totalVaultNewRewardTokens = newRewardTokens * totalVaultEntryTokenDeposits / entryTokenBalance;
         uint256 totalPoolShareholdersNewRewardTokens = newRewardTokens * totalPoolEntryTokenYield / entryTokenBalance;
-        console.log("");
-        console.log("totalVaultNewRewardTokens", totalVaultNewRewardTokens);
-        console.log("totalPoolShareholdersNewRewardTokens", totalPoolShareholdersNewRewardTokens);
-// 151901627257637972
-// 18588213962723
+
         uint256 totalSharesBefore = totalBalances;
         for (uint256 j; j < vaults.length(); j++) {
             address _vault = vaults.at(j);
             uint256 shareOfRewardTokens = totalVaultNewRewardTokens * entryTokenDeposits[j] / totalVaultEntryTokenDeposits;
             uint256 additionalSharesOfVault = _convertToSharesAfterPoolRewards(shareOfRewardTokens, totalPoolShareholdersNewRewardTokens, totalSharesBefore);
-            console.log("shareOfRewardTokens", j, ":", shareOfRewardTokens);
-            console.log("additionalSharesOfVault", j, ":", additionalSharesOfVault);
             balances[_vault] += additionalSharesOfVault;
             totalBalances += additionalSharesOfVault;
             // 5. Update all vault holder reward balances
@@ -160,11 +147,8 @@ contract AlluoVaultPool is Initializable, PausableUpgradeable, AccessControlUpgr
             address _vault = vaults.at(j);
             IAlluoVault(_vault).loopRewards();
         }
-        console.log("");
     }
-// 50622673010372160
-// 84324302383909670
-// 140461540709337974
+
     function _convertToSharesAfterPoolRewards(uint256 assets, uint256 poolRewards, uint256 totalBalancesBefore) internal view returns (uint256) {
         return (assets==0 || totalBalances ==0 || fundsLocked() == 0) ? assets : assets * totalBalancesBefore / (fundsLocked() + poolRewards);
     }
@@ -198,7 +182,6 @@ contract AlluoVaultPool is Initializable, PausableUpgradeable, AccessControlUpgr
         (, , , address pool, , ) = cvxBooster.poolInfo(poolId);
         ICvxBaseRewardPool(pool).withdrawAndUnwrap(amount, true);
         rewardToken.safeTransfer(msg.sender, amount);
-        console.log("balance of vault", balances[msg.sender]);
     }
 
     function accruedRewards() public view returns (RewardData[] memory) {
@@ -227,7 +210,28 @@ contract AlluoVaultPool is Initializable, PausableUpgradeable, AccessControlUpgr
         (,,, address rewardPool,,) =  cvxBooster.poolInfo(poolId);
          ICvxBaseRewardPool(rewardPool).getReward();
     }
+    function editVault(bool add, address _vault) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (add) {
+            vaults.add(_vault);
+            _grantRole(VAULT, _vault);
+        } else {
+            vaults.remove(_vault);
+            _revokeRole(VAULT, _vault);
+        }
+    }
 
+    function editYieldTokens(bool add, address _yieldToken) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (add) {
+            yieldTokens.add(_yieldToken);
+        } else {
+            yieldTokens.remove(_yieldToken);
+        }
+    }
+
+    function changeEntryToken(address _entryToken) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        entryToken = IERC20MetadataUpgradeable(_entryToken);
+    }
+    
     function changeUpgradeStatus(bool _status)
         external
         onlyRole(DEFAULT_ADMIN_ROLE)
@@ -250,7 +254,7 @@ contract AlluoVaultPool is Initializable, PausableUpgradeable, AccessControlUpgr
         onlyRole(getRoleAdmin(role))
     {
         if (role == DEFAULT_ADMIN_ROLE) {
-            require(account.isContract(), "IbAlluo: Not contract");
+            require(account.isContract(), "Not contract");
         }
         _grantRole(role, account);
     }
@@ -260,7 +264,7 @@ contract AlluoVaultPool is Initializable, PausableUpgradeable, AccessControlUpgr
         override
         onlyRole(UPGRADER_ROLE)
     {
-        require(upgradeStatus, "IbAlluo: Upgrade not allowed");
+        require(upgradeStatus, "Upgrade not allowed");
         upgradeStatus = false;
     }
 

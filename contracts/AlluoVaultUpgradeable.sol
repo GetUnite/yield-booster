@@ -125,18 +125,20 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
         console.log("Total rewards", totalRewards);
     }
 
-    function claimAndConvertToPoolEntryToken(address entryToken) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function claimAndConvertToPoolEntryToken(address entryToken) external onlyRole(DEFAULT_ADMIN_ROLE) returns (uint256) {
         claimRewardsFromPool();
         for (uint256 i; i < yieldTokens.length(); i++) {
             address token = yieldTokens.at(i);
             uint256 balance = IERC20MetadataUpgradeable(token).balanceOf(address(this));
             if (token != address(entryToken) && balance > 0) {
                 IERC20MetadataUpgradeable(token).safeIncreaseAllowance(address(exchange), balance);
-                balance = exchange.exchange(token, address(entryToken), balance, 0);
+                exchange.exchange(token, address(entryToken), balance, 0);
             }
         }
-        IERC20MetadataUpgradeable(entryToken).safeIncreaseAllowance(alluoPool, IERC20MetadataUpgradeable(entryToken).balanceOf(address(this)));
         vaultRewardsBefore = IAlluoPool(alluoPool).rewardTokenBalance();
+        uint256 amount = IERC20MetadataUpgradeable(entryToken).balanceOf(address(this));
+        IERC20MetadataUpgradeable(entryToken).safeTransfer(alluoPool, amount);
+        return amount;
     }
     function accruedRewards() public view returns (RewardData[] memory) {
         (, , , address pool, , ) = cvxBooster.poolInfo(poolId);
@@ -154,17 +156,19 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
     function shareholderAccruedRewards(address shareholder) public view returns (RewardData[] memory, IAlluoPool.RewardData[] memory) {
         RewardData[] memory vaultAccruals = accruedRewards();
         IAlluoPool.RewardData[] memory poolAccruals = IAlluoPool(alluoPool).accruedRewards();
-    
+        uint256 shares = balanceOf(shareholder);
+        uint256 totalSupplyShares = totalSupply();
+        uint256 poolTotalBalances = IAlluoPool(alluoPool).totalBalances();
         for (uint256 i; i < vaultAccruals.length; i++) {
-            uint256 userShareOfVaultAccruals = vaultAccruals[i].amount * balanceOf(shareholder) / totalSupply();
+            uint256 userShareOfVaultAccruals = vaultAccruals[i].amount * shares / totalSupplyShares;
             vaultAccruals[i].amount = userShareOfVaultAccruals;
         }
         for (uint256 i; i < poolAccruals.length; i++) {
-            if (IAlluoPool(alluoPool).totalBalances() == 0) {
+            if (poolTotalBalances == 0) {
                 break;
             }
-            uint256 vaultShareOfPoolAccruals = poolAccruals[i].amount * IAlluoPool(alluoPool).balances(address(this)) / IAlluoPool(alluoPool).totalBalances();
-            poolAccruals[i].amount = vaultShareOfPoolAccruals * balanceOf(shareholder) / totalSupply();
+            uint256 vaultShareOfPoolAccruals = poolAccruals[i].amount * IAlluoPool(alluoPool).balances(address(this)) / poolTotalBalances;
+            poolAccruals[i].amount = vaultShareOfPoolAccruals * shares / totalSupplyShares;
         }
         return (vaultAccruals, poolAccruals);
     }

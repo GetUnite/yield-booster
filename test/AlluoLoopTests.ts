@@ -235,12 +235,13 @@ describe("Alluo Pool Tests", function() {
         await AlluoVault3.claimRewardsInNonLp(usdc.address);
         expect(Number(await usdc.balanceOf(signers[0].address))).greaterThan(Number(userBalance))
         
+        // Skip 7 days to bypass whaleProtection
+        await skipDays(7);
         await AlluoVault1.withdraw(await AlluoVault1.balanceOf(signers[0].address), signers[0].address, signers[0].address)
         await AlluoVault2.withdraw(await AlluoVault2.balanceOf(signers[0].address), signers[0].address, signers[0].address)
         await AlluoVault3.withdraw(await AlluoVault3.balanceOf(signers[0].address), signers[0].address, signers[0].address)
 
         expect(await cvxEth.balanceOf(signers[0].address)).equal(lpBalance);
-
     }) 
 
     it("Multiple depositors, single vault, two loops", async () => {

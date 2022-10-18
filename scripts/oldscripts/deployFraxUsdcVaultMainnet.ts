@@ -1,6 +1,6 @@
 import { BigNumber } from "ethers";
 import { ethers, upgrades } from "hardhat"
-import { AlluoVaultUpgradeable } from "../typechain";
+import { AlluoVaultUpgradeable } from "../../typechain";
 
 async function main() {
 
