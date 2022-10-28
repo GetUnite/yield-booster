@@ -1,4 +1,4 @@
-// SPDX-LICENSE-IDENTIFIER: MIT
+//SPDX-License-Identifier: MIT
 pragma solidity ^0.8.11;
 
 import "@openzeppelin/contracts-upgradeable/utils/structs/EnumerableSetUpgradeable.sol";
@@ -9,12 +9,22 @@ import "./interfaces/IAlluoVault.sol";
 import "./interfaces/IAlluoPool.sol";
 
 interface IFastGas {
-    function latestRoundData() external view returns (uint80 roundId, uint256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound);
+    function latestRoundData()
+        external
+        view
+        returns (
+            uint80 roundId,
+            uint256 answer,
+            uint256 startedAt,
+            uint256 updatedAt,
+            uint80 answeredInRound
+        );
 }
 
 contract AlluoYieldResolver is AccessControlUpgradeable {
     bytes32 public constant VAULT = keccak256("VAULT");
-    IFastGas constant chainlinkFastGas = IFastGas(0x169E633A2D1E6c10dD91238Ba11c4A708dfEF37C);
+    IFastGas constant chainlinkFastGas =
+        IFastGas(0x169E633A2D1E6c10dD91238Ba11c4A708dfEF37C);
 
     EnumerableSetUpgradeable.AddressSet vaults;
     EnumerableSetUpgradeable.AddressSet boostPools;
@@ -26,7 +36,14 @@ contract AlluoYieldResolver is AccessControlUpgradeable {
     uint256 public maxGas;
     using EnumerableSetUpgradeable for EnumerableSetUpgradeable.AddressSet;
 
-    constructor(uint256 _maxGas, uint256 _stakeTime, uint256 _farmTime, address[] memory _vaults, address[] memory _boostPools)  {
+    constructor(
+        uint256 _maxGas,
+        uint256 _stakeTime,
+        uint256 _farmTime,
+        address[] memory _vaults,
+        address[] memory _boostPools,
+        address gnosis
+    ) {
         maxGas = _maxGas;
         stakeTime = _stakeTime;
         farmTime = _farmTime;
@@ -36,57 +53,101 @@ contract AlluoYieldResolver is AccessControlUpgradeable {
         for (uint256 i; i < _boostPools.length; i++) {
             boostPools.add(_boostPools[i]);
         }
+
+        // verify if this approach is correct
+        _grantRole(DEFAULT_ADMIN_ROLE, gnosis);
     }
 
     function currentGasPriceAcceptable() public view returns (bool acceptable) {
-        (,uint256 gas,,,) = chainlinkFastGas.latestRoundData();
+        (, uint256 gas, , , ) = chainlinkFastGas.latestRoundData();
         acceptable = true ? gas < maxGas : false;
     }
 
-    function stakingChecker() external view  returns (bool canExec, bytes memory execPayload) {
+    function stakingChecker()
+        external
+        view
+        returns (bool canExec, bytes memory execPayload)
+    {
         for (uint256 i; i < vaults.length(); i++) {
             address vault = vaults.at(i);
-            address asset = IAlluoVault(vaults.at(i)).asset();
-            if (IERC20Upgradeable(asset).balanceOf(vault) > 0 && block.timestamp > vaultLastStake[vault] + stakeTime && currentGasPriceAcceptable() ) {
-                return(true, abi.encodeWithSelector(AlluoYieldResolver.stakeFunds.selector, i));
+            address asset = IAlluoVault(vault).asset();
+
+            if (
+                IERC20Upgradeable(asset).balanceOf(vault) > 0 &&
+                block.timestamp > vaultLastStake[vault] + stakeTime &&
+                currentGasPriceAcceptable()
+            ) {
+                return (
+                    true,
+                    abi.encodeWithSelector(
+                        AlluoYieldResolver.stakeFunds.selector,
+                        i
+                    )
+                );
             }
         }
         return (canExec, execPayload);
     }
 
-    function stakeFunds(uint256 index) external {
-        IAlluoVault(vaults.at(index)).stakeUnderlying();
-    }
-
-    function farmFunds(uint256 index) external {
-        IAlluoPool(boostPools.at(index)).farm();
-    }
-
-    function farmingChecker() external view  returns (bool canExec, bytes memory execPayload) {
+    function farmingChecker()
+        external
+        view
+        returns (bool canExec, bytes memory execPayload)
+    {
         for (uint256 i; i < boostPools.length(); i++) {
             address boostPool = boostPools.at(i);
-            if (block.timestamp > boostLastFarm[boostPool] + farmTime && currentGasPriceAcceptable() ) {
-                return(true, abi.encodeWithSelector(AlluoYieldResolver.farmFunds.selector, i));
+
+            if (
+                block.timestamp > boostLastFarm[boostPool] + farmTime &&
+                currentGasPriceAcceptable()
+            ) {
+                return (
+                    true,
+                    abi.encodeWithSelector(
+                        AlluoYieldResolver.farmFunds.selector,
+                        i
+                    )
+                );
             }
         }
         return (canExec, execPayload);
     }
 
+    function stakeFunds(uint256 index) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        IAlluoVault(vaults.at(index)).stakeUnderlying();
+        vaultLastStake[vaults.at(index)] = block.timestamp;
+    }
 
-    function setStakeTime(uint256 newTime) external {
+    function farmFunds(uint256 index) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        IAlluoPool(boostPools.at(index)).farm();
+        boostLastFarm[boostPools.at(index)] = block.timestamp;
+    }
+
+    function setStakeTime(uint256 newTime)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
         stakeTime = newTime;
     }
 
-    function setFarmTime(uint256 newTime) external {
+    function setFarmTime(uint256 newTime)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
         farmTime = newTime;
     }
 
-    function setMaxGas(uint256 newMaxGas) external {
+    function setMaxGas(uint256 newMaxGas)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
         maxGas = newMaxGas;
     }
 
-
-    function editVaults (bool add, address _vault) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function editVaults(bool add, address _vault)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
         if (add) {
             vaults.add(_vault);
         } else {
@@ -94,7 +155,10 @@ contract AlluoYieldResolver is AccessControlUpgradeable {
         }
     }
 
-       function editboostPools (bool add, address _boostPool) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function editboostPools(bool add, address _boostPool)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
         if (add) {
             boostPools.add(_boostPool);
         } else {
