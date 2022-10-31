@@ -31,3 +31,5 @@ main()
     console.error(error);
     process.exit(1);
   });
+
+// npx hardhat verify --network goerli 0x6D4c38650e33b860855cbDF3E2e29D761344fF17 --constructor-args alluoYieldResolverArguments.js
