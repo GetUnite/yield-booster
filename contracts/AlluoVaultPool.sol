@@ -83,11 +83,10 @@ contract AlluoVaultPool is Initializable, PausableUpgradeable, AccessControlUpgr
         _grantRole(UPGRADER_ROLE, _multiSigWallet);
 
 
-        // TESTS ONLY:
+        // // TESTS ONLY:
         // _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         // _grantRole(UPGRADER_ROLE, msg.sender);
         // _grantRole(VAULT, msg.sender);
-
 
 
     }
