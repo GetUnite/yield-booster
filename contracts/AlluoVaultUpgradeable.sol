@@ -153,13 +153,19 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
         return rewardArray;
     }
 
+    
+
     function shareholderAccruedRewards(address shareholder) public view returns (RewardData[] memory, IAlluoPool.RewardData[] memory) {
         RewardData[] memory vaultAccruals = accruedRewards();
         IAlluoPool.RewardData[] memory poolAccruals = IAlluoPool(alluoPool).accruedRewards();
         uint256 shares = balanceOf(shareholder);
         uint256 totalSupplyShares = totalSupply();
         uint256 poolTotalBalances = IAlluoPool(alluoPool).totalBalances();
+
         for (uint256 i; i < vaultAccruals.length; i++) {
+            if (totalSupplyShares == 0) {
+                break;
+            }
             uint256 userShareOfVaultAccruals = vaultAccruals[i].amount * shares / totalSupplyShares;
             vaultAccruals[i].amount = userShareOfVaultAccruals;
         }
