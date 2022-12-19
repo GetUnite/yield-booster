@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "description": "",
   "main": "hardhat.config.ts",
-  "scripts": {},
+  "scripts": {
+    "solidity-metrics": "npx hardhat run scripts/audit/metrics.js"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/GetAlluo/yield-booster.git"
@@ -53,9 +55,7 @@
     "typescript": "^4.5.4"
   },
   "dependencies": {
-    "@openzeppelin/contracts-upgradeable": "^4.7.3"
+    "@openzeppelin/contracts-upgradeable": "^4.7.3",
+    "solidity-code-metrics": "^0.0.22"
   }
 }
-
-
-
