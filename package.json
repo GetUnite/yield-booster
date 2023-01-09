@@ -53,9 +53,7 @@
     "typescript": "^4.5.4"
   },
   "dependencies": {
+    "@nomicfoundation/solidity-analyzer": "^0.1.0",
     "@openzeppelin/contracts-upgradeable": "^4.7.3"
   }
 }
-
-
-

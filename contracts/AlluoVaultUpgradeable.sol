@@ -16,8 +16,14 @@ import "./interfaces/IExchange.sol";
 import "./interfaces/ICurvePool.sol";
 
 import "hardhat/console.sol";
-contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessControlUpgradeable, UUPSUpgradeable, ERC4626Upgradeable {
 
+contract AlluoVaultUpgradeable is
+    Initializable,
+    PausableUpgradeable,
+    AccessControlUpgradeable,
+    UUPSUpgradeable,
+    ERC4626Upgradeable
+{
     // Deposit vs Mint
     // Deposit is adding an exact amount of underlying tokens
     // Mint is creating an exact amount of shares in the vault, but potentially different number of underlying.
@@ -31,8 +37,8 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
     IExchange public constant exchange =
         IExchange(0x29c66CF57a03d41Cfe6d9ecB6883aa0E2AbA21Ec);
 
-    bytes32 public constant  UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
-    bytes32 public constant  GELATO = keccak256("GELATO");
+    bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
+    bytes32 public constant GELATO = keccak256("GELATO");
 
     address public trustedForwarder;
     bool public upgradeStatus;
@@ -44,7 +50,7 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
     uint256 public poolId;
     EnumerableSetUpgradeable.AddressSet yieldTokens;
     EnumerableSetUpgradeable.AddressSet poolTokens;
- 
+
     address public curvePool;
     uint256 public adminFee;
     address public gnosis;
@@ -99,9 +105,9 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
         _grantRole(GELATO, _multiSigWallet);
 
         // // ENABLE ONLY FOR TESTS
-        // _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        // _grantRole(UPGRADER_ROLE, msg.sender);
-        // _grantRole(GELATO, msg.sender);
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(UPGRADER_ROLE, msg.sender);
+        _grantRole(GELATO, msg.sender);
 
         gnosis = _multiSigWallet;
         trustedForwarder = _trustedForwarder;
@@ -115,49 +121,76 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
         uint256 vaultRewardAfter = IAlluoPool(alluoPool).rewardTokenBalance();
         uint256 totalRewards = vaultRewardAfter - vaultRewardsBefore;
         if (totalRewards > 0) {
-            uint256 totalFees = totalRewards * adminFee / 10**4;
+            uint256 totalFees = (totalRewards * adminFee) / 10**4;
             uint256 newRewards = totalRewards - totalFees;
             rewards[gnosis] += totalFees;
-            rewardsPerShareAccumulated += newRewards * 10**18 / totalSupply();
+            rewardsPerShareAccumulated += (newRewards * 10**18) / totalSupply();
         }
         console.log("Vault reward after", vaultRewardAfter);
         console.log("Vault rewards before", vaultRewardsBefore);
         console.log("Total rewards", totalRewards);
     }
 
-    function claimAndConvertToPoolEntryToken(address entryToken) external onlyRole(DEFAULT_ADMIN_ROLE) returns (uint256) {
+    function claimAndConvertToPoolEntryToken(address entryToken)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+        returns (uint256)
+    {
         claimRewardsFromPool();
         for (uint256 i; i < yieldTokens.length(); i++) {
             address token = yieldTokens.at(i);
-            uint256 balance = IERC20MetadataUpgradeable(token).balanceOf(address(this));
+            uint256 balance = IERC20MetadataUpgradeable(token).balanceOf(
+                address(this)
+            );
             if (token != address(entryToken) && balance > 0) {
-                IERC20MetadataUpgradeable(token).safeIncreaseAllowance(address(exchange), balance);
+                IERC20MetadataUpgradeable(token).safeIncreaseAllowance(
+                    address(exchange),
+                    balance
+                );
                 exchange.exchange(token, address(entryToken), balance, 0);
             }
         }
         vaultRewardsBefore = IAlluoPool(alluoPool).rewardTokenBalance();
-        uint256 amount = IERC20MetadataUpgradeable(entryToken).balanceOf(address(this));
+        uint256 amount = IERC20MetadataUpgradeable(entryToken).balanceOf(
+            address(this)
+        );
         IERC20MetadataUpgradeable(entryToken).safeTransfer(alluoPool, amount);
         return amount;
     }
+
     function accruedRewards() public view returns (RewardData[] memory) {
         (, , , address pool, , ) = cvxBooster.poolInfo(poolId);
         ICvxBaseRewardPool mainCvxPool = ICvxBaseRewardPool(pool);
         uint256 extraRewardsLength = mainCvxPool.extraRewardsLength();
-        RewardData[] memory rewardArray = new RewardData[](extraRewardsLength + 1);
-        rewardArray[0] = RewardData(mainCvxPool.rewardToken(),mainCvxPool.earned(address(this)));
+        RewardData[] memory rewardArray = new RewardData[](
+            extraRewardsLength + 1
+        );
+        rewardArray[0] = RewardData(
+            mainCvxPool.rewardToken(),
+            mainCvxPool.earned(address(this))
+        );
         for (uint256 i; i < extraRewardsLength; i++) {
-            ICvxBaseRewardPool extraReward = ICvxBaseRewardPool(mainCvxPool.extraRewards(i));
-            rewardArray[i+1] = (RewardData(extraReward.rewardToken(), extraReward.earned(address(this))));
+            ICvxBaseRewardPool extraReward = ICvxBaseRewardPool(
+                mainCvxPool.extraRewards(i)
+            );
+            rewardArray[i + 1] = (
+                RewardData(
+                    extraReward.rewardToken(),
+                    extraReward.earned(address(this))
+                )
+            );
         }
         return rewardArray;
     }
 
-    
-
-    function shareholderAccruedRewards(address shareholder) public view returns (RewardData[] memory, IAlluoPool.RewardData[] memory) {
+    function shareholderAccruedRewards(address shareholder)
+        public
+        view
+        returns (RewardData[] memory, IAlluoPool.RewardData[] memory)
+    {
         RewardData[] memory vaultAccruals = accruedRewards();
-        IAlluoPool.RewardData[] memory poolAccruals = IAlluoPool(alluoPool).accruedRewards();
+        IAlluoPool.RewardData[] memory poolAccruals = IAlluoPool(alluoPool)
+            .accruedRewards();
         uint256 shares = balanceOf(shareholder);
         uint256 totalSupplyShares = totalSupply();
         uint256 poolTotalBalances = IAlluoPool(alluoPool).totalBalances();
@@ -166,37 +199,47 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
             if (totalSupplyShares == 0) {
                 break;
             }
-            uint256 userShareOfVaultAccruals = vaultAccruals[i].amount * shares / totalSupplyShares;
+            uint256 userShareOfVaultAccruals = (vaultAccruals[i].amount *
+                shares) / totalSupplyShares;
             vaultAccruals[i].amount = userShareOfVaultAccruals;
         }
         for (uint256 i; i < poolAccruals.length; i++) {
             if (poolTotalBalances == 0) {
                 break;
             }
-            uint256 vaultShareOfPoolAccruals = poolAccruals[i].amount * IAlluoPool(alluoPool).balances(address(this)) / poolTotalBalances;
-            poolAccruals[i].amount = vaultShareOfPoolAccruals * shares / totalSupplyShares;
+            uint256 vaultShareOfPoolAccruals = (poolAccruals[i].amount *
+                IAlluoPool(alluoPool).balances(address(this))) /
+                poolTotalBalances;
+            poolAccruals[i].amount =
+                (vaultShareOfPoolAccruals * shares) /
+                totalSupplyShares;
         }
         return (vaultAccruals, poolAccruals);
     }
 
-    /// @notice Stakes all underlying LP tokens that are not already staked. 
+    /// @notice Stakes all underlying LP tokens that are not already staked.
     /// @dev Also claims rewards. This function should be called before loopRewards if Lps are not staked.
     function stakeUnderlying() external {
-        IERC20MetadataUpgradeable underlying = IERC20MetadataUpgradeable(asset());
-        underlying.safeIncreaseAllowance(address(cvxBooster), underlying.balanceOf(address(this)));
+        IERC20MetadataUpgradeable underlying = IERC20MetadataUpgradeable(
+            asset()
+        );
+        underlying.safeIncreaseAllowance(
+            address(cvxBooster),
+            underlying.balanceOf(address(this))
+        );
         cvxBooster.deposit(poolId, underlying.balanceOf(address(this)), true);
-         (, , , address pool, , ) = cvxBooster.poolInfo(poolId);
-         ICvxBaseRewardPool(pool).getReward();
+        (, , , address pool, , ) = cvxBooster.poolInfo(poolId);
+        ICvxBaseRewardPool(pool).getReward();
     }
-    
+
     /// @notice Claims all rewards
     /// @dev Used when looping rewards
     function claimRewardsFromPool() public {
         (, , , address pool, , ) = cvxBooster.poolInfo(poolId);
-         ICvxBaseRewardPool(pool).getReward();
+        ICvxBaseRewardPool(pool).getReward();
     }
 
-    /// @notice Accordingly credits the account with accumulated rewards 
+    /// @notice Accordingly credits the account with accumulated rewards
     /// @dev Gives the correct reward per share using the earned view function and then ensures that this is accounted for.
     /// @param account Shareholder
     function _distributeReward(address account) internal {
@@ -208,20 +251,28 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
     /// @dev First calculate the amount per share not paid and then multiply this by the amount of shares the user owns.
     /// @param account Shareholder
     function earned(address account) public view returns (uint256) {
-        uint256 rewardsDelta = rewardsPerShareAccumulated - userRewardPaid[account];
-        uint256 undistributedRewards = balanceOf(account) * rewardsDelta / 10**18 ;
+        uint256 rewardsDelta = rewardsPerShareAccumulated -
+            userRewardPaid[account];
+        uint256 undistributedRewards = (balanceOf(account) * rewardsDelta) /
+            10**18;
         return undistributedRewards + rewards[account];
     }
-
 
     /// @notice Deposits an amount of LP underlying and mints shares in the vault.
     /// @dev Read the difference between deposit and mint at the start of the contract. Makes sure to distribute rewards before any actions occur
     /// @param assets Amount of assets deposited
     /// @param receiver Recipient of shares
     /// @return New amount of shares minted
-    function deposit(uint256 assets, address receiver) public override returns(uint256) {
+    function deposit(uint256 assets, address receiver)
+        public
+        override
+        returns (uint256)
+    {
         _distributeReward(_msgSender());
-        require(assets <= maxDeposit(receiver), "ERC4626: deposit more than max");
+        require(
+            assets <= maxDeposit(receiver),
+            "ERC4626: deposit more than max"
+        );
         uint256 shares = previewDeposit(assets);
         _deposit(_msgSender(), receiver, assets, shares);
         return shares;
@@ -233,37 +284,67 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
     /// @param assets Amount of assets deposited
     /// @param entryToken Recipient of shares
     /// @return New amount of shares minted
-    function depositWithoutLP(uint256 assets, address entryToken) public  returns(uint256) {
+    function depositWithoutLP(uint256 assets, address entryToken)
+        public
+        returns (uint256)
+    {
         _distributeReward(_msgSender());
-        IERC20MetadataUpgradeable(entryToken).safeTransferFrom(_msgSender(), address(this), assets);
-        IERC20MetadataUpgradeable(entryToken).safeIncreaseAllowance(address(exchange), assets);
-        assets = exchange.exchange(entryToken,asset(),assets,0);
-        require(assets <= _nonLpMaxDeposit(assets), "ERC4626: deposit more than max");
+        IERC20MetadataUpgradeable(entryToken).safeTransferFrom(
+            _msgSender(),
+            address(this),
+            assets
+        );
+        IERC20MetadataUpgradeable(entryToken).safeIncreaseAllowance(
+            address(exchange),
+            assets
+        );
+        assets = exchange.exchange(entryToken, asset(), assets, 0);
+        require(
+            assets <= _nonLpMaxDeposit(assets),
+            "ERC4626: deposit more than max"
+        );
         uint256 shares = _nonLpPreviewDeposit(assets);
         _mint(_msgSender(), shares);
         emit Deposit(_msgSender(), _msgSender(), assets, shares);
         return shares;
     }
+
     function _nonLpMaxDeposit(uint256 assets) internal view returns (uint256) {
-        return totalAssets() - assets > 0 || totalSupply() == 0 ? type(uint256).max : 0;
+        return
+            totalAssets() - assets > 0 || totalSupply() == 0
+                ? type(uint256).max
+                : 0;
     }
 
-    function _nonLpPreviewDeposit(uint256 assets ) internal view returns (uint256) {
+    function _nonLpPreviewDeposit(uint256 assets)
+        internal
+        view
+        returns (uint256)
+    {
         uint256 supply = totalSupply();
-        return (assets == 0 || supply == 0) ? assets: assets.mulDiv(supply, totalAssets() - assets, MathUpgradeable.Rounding.Down);
+        return
+            (assets == 0 || supply == 0)
+                ? assets
+                : assets.mulDiv(
+                    supply,
+                    totalAssets() - assets,
+                    MathUpgradeable.Rounding.Down
+                );
     }
-
 
     /** @dev See {IERC4626-mint}.**/
     /// Standard ERC4626 mint function but distributes rewards before deposits
-    function mint(uint256 shares, address receiver) public  override returns (uint256) {
+    function mint(uint256 shares, address receiver)
+        public
+        override
+        returns (uint256)
+    {
         _distributeReward(_msgSender());
         require(shares <= maxMint(receiver), "ERC4626: mint more than max");
         uint256 assets = previewMint(shares);
         _deposit(_msgSender(), receiver, assets, shares);
         return assets;
     }
-
 
     /** @dev See {IERC4626-withdraw}. */
     /// Standard ERC4626 withdraw function but distributes rewards before withdraw
@@ -274,19 +355,21 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
         address owner
     ) public virtual override returns (uint256) {
         _distributeReward(_msgSender());
-        require(assets <= maxWithdraw(owner), "ERC4626: withdraw more than max");
+        require(
+            assets <= maxWithdraw(owner),
+            "ERC4626: withdraw more than max"
+        );
         _unstakeForWithdraw(assets);
         uint256 shares = previewWithdraw(assets);
         _withdraw(_msgSender(), receiver, owner, assets, shares);
         return shares;
     }
 
-
     /// @notice Allows withdrawals in any ERC20 token supported by the Alluo Exchange
-    /// @dev 
+    /// @dev
     /// @param assets  Amount of vault shares to burn
     /// @param receiver Recipient of the tokens
-    /// @param owner Standrad ERC4626 owner 
+    /// @param owner Standrad ERC4626 owner
     /// @param exitToken Token that you want to receive by burning shares in the vault and the Lp token
     /// @return uint256 amount of exitToken assets received
     function withdrawToNonLp(
@@ -296,15 +379,21 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
         address exitToken
     ) public returns (uint256) {
         _distributeReward(_msgSender());
-        require(assets <= maxWithdraw(owner), "ERC4626: withdraw more than max");
+        require(
+            assets <= maxWithdraw(owner),
+            "ERC4626: withdraw more than max"
+        );
         _unstakeForWithdraw(assets);
         uint256 shares = previewWithdraw(assets);
         if (_msgSender() != owner) {
             _spendAllowance(owner, _msgSender(), shares);
         }
         _burn(owner, shares);
-        IERC20MetadataUpgradeable(asset()).safeIncreaseAllowance(address(exchange), shares);
-        shares = exchange.exchange(asset(), exitToken, shares,0);
+        IERC20MetadataUpgradeable(asset()).safeIncreaseAllowance(
+            address(exchange),
+            shares
+        );
+        shares = exchange.exchange(asset(), exitToken, shares, 0);
         IERC20MetadataUpgradeable(exitToken).safeTransfer(receiver, shares);
         return shares;
     }
@@ -349,9 +438,17 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
             rewards[_msgSender()] = 0;
             // Disable for Sepolia
             IAlluoPool(alluoPool).withdraw(rewardTokens);
-            rewardToken.safeIncreaseAllowance(address(exchange),rewardTokens);
-            rewardTokens = exchange.exchange(address(rewardToken), exitToken, rewardTokens,0);
-            IERC20MetadataUpgradeable(exitToken).safeTransfer(_msgSender(), rewardTokens);
+            rewardToken.safeIncreaseAllowance(address(exchange), rewardTokens);
+            rewardTokens = exchange.exchange(
+                address(rewardToken),
+                exitToken,
+                rewardTokens,
+                0
+            );
+            IERC20MetadataUpgradeable(exitToken).safeTransfer(
+                _msgSender(),
+                rewardTokens
+            );
         }
         return rewardTokens;
     }
@@ -360,38 +457,52 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
     /// @param amount Amount of tokens to unstake
     /// @dev Simply unwraps the amount needed to meet the withdrawal
     function _unstakeForWithdraw(uint256 amount) internal {
-        uint256 availableBalance = IERC20MetadataUpgradeable(asset()).balanceOf(address(this));
+        uint256 availableBalance = IERC20MetadataUpgradeable(asset()).balanceOf(
+            address(this)
+        );
         if (availableBalance < amount) {
             (, , , address pool, , ) = cvxBooster.poolInfo(poolId);
-            ICvxBaseRewardPool(pool).withdrawAndUnwrap(amount - availableBalance, true);
+            ICvxBaseRewardPool(pool).withdrawAndUnwrap(
+                amount - availableBalance,
+                true
+            );
         }
     }
 
     function totalAssets() public view override returns (uint256) {
-        return IERC20MetadataUpgradeable(asset()).balanceOf(address(this)) + stakedBalanceOf();
+        return
+            IERC20MetadataUpgradeable(asset()).balanceOf(address(this)) +
+            stakedBalanceOf();
     }
 
     function stakedBalanceOf() public view returns (uint256) {
-         (, , , address pool, , ) = cvxBooster.poolInfo(poolId);
+        (, , , address pool, , ) = cvxBooster.poolInfo(poolId);
         return ICvxBaseRewardPool(pool).balanceOf(address(this));
         // // Disable for sepolia
         // return 0;
     }
-    function _beforeTokenTransfer(address from, address to, uint256 amount) internal virtual override
-    {
+
+    function _beforeTokenTransfer(
+        address from,
+        address to,
+        uint256 amount
+    ) internal virtual override {
         _distributeReward(from);
         _distributeReward(to);
         super._beforeTokenTransfer(from, to, amount);
     }
 
-
     function setPool(address _pool) external onlyRole(DEFAULT_ADMIN_ROLE) {
         alluoPool = _pool;
     }
 
-    function addPoolTokens(address _token) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function addPoolTokens(address _token)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
         poolTokens.add(_token);
     }
+
     function isTrustedForwarder(address forwarder)
         public
         view
@@ -400,7 +511,6 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
     {
         return forwarder == trustedForwarder;
     }
-
 
     function setTrustedForwarder(address newTrustedForwarder)
         external
@@ -428,8 +538,6 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
         adminFee = fee;
     }
 
-
-
     function grantRole(bytes32 role, address account)
         public
         override
@@ -440,6 +548,7 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
         }
         _grantRole(role, account);
     }
+
     function _msgSender()
         internal
         view
@@ -470,7 +579,7 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
             return super._msgData();
         }
     }
-    
+
     function _authorizeUpgrade(address)
         internal
         override
@@ -479,6 +588,4 @@ contract AlluoVaultUpgradeable is Initializable, PausableUpgradeable, AccessCont
         require(upgradeStatus, "IbAlluo: Upgrade not allowed");
         upgradeStatus = false;
     }
-
-    
 }

@@ -18,10 +18,12 @@ import "./interfaces/ICvxBaseRewardPool.sol";
 import "./interfaces/ICurvePool.sol";
 import "./interfaces/IAlluoVault.sol";
 
-
-
-contract AlluoVaultPool is Initializable, PausableUpgradeable, AccessControlUpgradeable, UUPSUpgradeable {
-
+contract AlluoVaultPool is
+    Initializable,
+    PausableUpgradeable,
+    AccessControlUpgradeable,
+    UUPSUpgradeable
+{
     ICvxBooster public constant cvxBooster =
         ICvxBooster(0xF403C135812408BFbE8713b5A23a04b3D48AAE31);
     IExchange public constant exchange =
@@ -30,8 +32,8 @@ contract AlluoVaultPool is Initializable, PausableUpgradeable, AccessControlUpgr
     mapping(address => uint256) public balances;
     uint256 public totalBalances;
 
-    bytes32 public constant  UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
-    bytes32 public constant  VAULT = keccak256("VAULT");
+    bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
+    bytes32 public constant VAULT = keccak256("VAULT");
 
     bool public upgradeStatus;
 
@@ -76,33 +78,34 @@ contract AlluoVaultPool is Initializable, PausableUpgradeable, AccessControlUpgr
         }
         for (uint256 j; j < _vaults.length; j++) {
             vaults.add(_vaults[j]);
-            _grantRole(VAULT,_vaults[j]);
+            _grantRole(VAULT, _vaults[j]);
         }
         require(_multiSigWallet.isContract(), "BaseAlluoPool: Not contract");
         _grantRole(DEFAULT_ADMIN_ROLE, _multiSigWallet);
         _grantRole(UPGRADER_ROLE, _multiSigWallet);
 
-
         // // TESTS ONLY:
-        // _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        // _grantRole(UPGRADER_ROLE, msg.sender);
-        // _grantRole(VAULT, msg.sender);
-
-
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(UPGRADER_ROLE, msg.sender);
+        _grantRole(VAULT, msg.sender);
     }
-
 
     /// @notice Claims all rewards, exchange all rewards for LPs and stake them
     /// @dev Exchanges all rewards (including those sent by the vault) for the entryToken, adds liquidity for LP tokens and then stakes them
     ///      This function is not to be called directly, but rather through the vault contract it is linked to.
-    function farm() onlyRole(DEFAULT_ADMIN_ROLE) external {
+    function farm() external onlyRole(DEFAULT_ADMIN_ROLE) {
         // 1. Claim all rewards accumulated by booster pool and convert to the entryToken
         claimRewardsFromPool();
         for (uint256 i; i < yieldTokens.length(); i++) {
             address token = yieldTokens.at(i);
-            uint256 balance = IERC20MetadataUpgradeable(token).balanceOf(address(this));
+            uint256 balance = IERC20MetadataUpgradeable(token).balanceOf(
+                address(this)
+            );
             if (token != address(entryToken) && balance > 0) {
-                IERC20MetadataUpgradeable(token).safeIncreaseAllowance(address(exchange), balance);
+                IERC20MetadataUpgradeable(token).safeIncreaseAllowance(
+                    address(exchange),
+                    balance
+                );
                 exchange.exchange(token, address(entryToken), balance, 0);
             }
         }
@@ -113,7 +116,8 @@ contract AlluoVaultPool is Initializable, PausableUpgradeable, AccessControlUpgr
         uint256[] memory entryTokenDeposits = new uint256[](vaults.length());
         for (uint256 i; i < vaults.length(); i++) {
             address _vault = vaults.at(i);
-            uint256 vaultEntryTokenBalance = IAlluoVault(_vault).claimAndConvertToPoolEntryToken(address(entryToken));
+            uint256 vaultEntryTokenBalance = IAlluoVault(_vault)
+                .claimAndConvertToPoolEntryToken(address(entryToken));
             totalVaultEntryTokenDeposits += vaultEntryTokenBalance;
             entryTokenDeposits[i] = vaultEntryTokenBalance;
         }
@@ -121,22 +125,40 @@ contract AlluoVaultPool is Initializable, PausableUpgradeable, AccessControlUpgr
         uint256 entryTokenBalance = entryToken.balanceOf(address(this));
         uint256 newRewardTokens;
         if (entryTokenBalance > 0) {
-            entryToken.safeIncreaseAllowance(address(exchange), entryTokenBalance);
-            newRewardTokens = exchange.exchange(address(entryToken), address(rewardToken), entryTokenBalance, 0);
-            rewardToken.safeIncreaseAllowance(address(cvxBooster), newRewardTokens);
+            entryToken.safeIncreaseAllowance(
+                address(exchange),
+                entryTokenBalance
+            );
+            newRewardTokens = exchange.exchange(
+                address(entryToken),
+                address(rewardToken),
+                entryTokenBalance,
+                0
+            );
+            rewardToken.safeIncreaseAllowance(
+                address(cvxBooster),
+                newRewardTokens
+            );
         }
 
         // 4. Now give shares of the pool to the vaults which deposited entryToken by calculating how much of they own of the rewardToken LP amount that was created
         // 5. Update all vault holder reward balances
 
-        uint256 totalVaultNewRewardTokens = newRewardTokens * totalVaultEntryTokenDeposits / entryTokenBalance;
-        uint256 totalPoolShareholdersNewRewardTokens = newRewardTokens * totalPoolEntryTokenYield / entryTokenBalance;
+        uint256 totalVaultNewRewardTokens = (newRewardTokens *
+            totalVaultEntryTokenDeposits) / entryTokenBalance;
+        uint256 totalPoolShareholdersNewRewardTokens = (newRewardTokens *
+            totalPoolEntryTokenYield) / entryTokenBalance;
 
         uint256 totalSharesBefore = totalBalances;
         for (uint256 j; j < vaults.length(); j++) {
             address _vault = vaults.at(j);
-            uint256 shareOfRewardTokens = totalVaultNewRewardTokens * entryTokenDeposits[j] / totalVaultEntryTokenDeposits;
-            uint256 additionalSharesOfVault = _convertToSharesAfterPoolRewards(shareOfRewardTokens, totalPoolShareholdersNewRewardTokens, totalSharesBefore);
+            uint256 shareOfRewardTokens = (totalVaultNewRewardTokens *
+                entryTokenDeposits[j]) / totalVaultEntryTokenDeposits;
+            uint256 additionalSharesOfVault = _convertToSharesAfterPoolRewards(
+                shareOfRewardTokens,
+                totalPoolShareholdersNewRewardTokens,
+                totalSharesBefore
+            );
             balances[_vault] += additionalSharesOfVault;
             totalBalances += additionalSharesOfVault;
             // 5. Update all vault holder reward balances
@@ -148,17 +170,34 @@ contract AlluoVaultPool is Initializable, PausableUpgradeable, AccessControlUpgr
         }
     }
 
-    function _convertToSharesAfterPoolRewards(uint256 assets, uint256 poolRewards, uint256 totalBalancesBefore) internal view returns (uint256) {
-        return (assets==0 || totalBalances ==0 || fundsLocked() == 0) ? assets : assets * totalBalancesBefore / (fundsLocked() + poolRewards);
-    }
-    function _convertToShares(uint256 assets) internal view returns (uint256) {
-        return (assets==0 || totalBalances ==0) ? assets : assets * totalBalances / fundsLocked();
-    }
-
-
-    function _convertToAssets(uint256 shares) internal view returns (uint256 assets) {
+    function _convertToSharesAfterPoolRewards(
+        uint256 assets,
+        uint256 poolRewards,
+        uint256 totalBalancesBefore
+    ) internal view returns (uint256) {
         return
-            (totalBalances == 0) ? shares: shares * fundsLocked() / totalBalances;
+            (assets == 0 || totalBalances == 0 || fundsLocked() == 0)
+                ? assets
+                : (assets * totalBalancesBefore) /
+                    (fundsLocked() + poolRewards);
+    }
+
+    function _convertToShares(uint256 assets) internal view returns (uint256) {
+        return
+            (assets == 0 || totalBalances == 0)
+                ? assets
+                : (assets * totalBalances) / fundsLocked();
+    }
+
+    function _convertToAssets(uint256 shares)
+        internal
+        view
+        returns (uint256 assets)
+    {
+        return
+            (totalBalances == 0)
+                ? shares
+                : (shares * fundsLocked()) / totalBalances;
     }
 
     function rewardTokenBalance() external view returns (uint256) {
@@ -167,10 +206,13 @@ contract AlluoVaultPool is Initializable, PausableUpgradeable, AccessControlUpgr
 
     /// @notice Simply stakes all LP tokens if for some reason they are not staked
     function depositIntoBooster() external {
-        rewardToken.safeIncreaseAllowance(address(cvxBooster), rewardToken.balanceOf(address(this)));
+        rewardToken.safeIncreaseAllowance(
+            address(cvxBooster),
+            rewardToken.balanceOf(address(this))
+        );
         cvxBooster.deposit(poolId, rewardToken.balanceOf(address(this)), true);
     }
-    
+
     /// @notice Unstakes from convex and sends it back to the vault to allow withdrawals of principal
     /// @param amount Amount of lpTokens to unwrap
     function withdraw(uint256 amount) external onlyRole(VAULT) {
@@ -187,29 +229,46 @@ contract AlluoVaultPool is Initializable, PausableUpgradeable, AccessControlUpgr
         (, , , address pool, , ) = cvxBooster.poolInfo(poolId);
         ICvxBaseRewardPool mainCvxPool = ICvxBaseRewardPool(pool);
         uint256 extraRewardsLength = mainCvxPool.extraRewardsLength();
-        RewardData[] memory rewardArray = new RewardData[](extraRewardsLength + 1);
-        rewardArray[0] = RewardData(mainCvxPool.rewardToken(),mainCvxPool.earned(address(this)));
+        RewardData[] memory rewardArray = new RewardData[](
+            extraRewardsLength + 1
+        );
+        rewardArray[0] = RewardData(
+            mainCvxPool.rewardToken(),
+            mainCvxPool.earned(address(this))
+        );
         for (uint256 i; i < extraRewardsLength; i++) {
-            ICvxBaseRewardPool extraReward = ICvxBaseRewardPool(mainCvxPool.extraRewards(i));
-            rewardArray[i+1] = (RewardData(extraReward.rewardToken(), extraReward.earned(address(this))));
+            ICvxBaseRewardPool extraReward = ICvxBaseRewardPool(
+                mainCvxPool.extraRewards(i)
+            );
+            rewardArray[i + 1] = (
+                RewardData(
+                    extraReward.rewardToken(),
+                    extraReward.earned(address(this))
+                )
+            );
         }
         return rewardArray;
     }
-    /// @notice Returns total amount staked. 
+
+    /// @notice Returns total amount staked.
     /// @dev Used to calculate total amount of assets locked in the vault
     /// @return uint256 balance of staked tokens
     function fundsLocked() public view returns (uint256) {
-        (,,, address rewardPool,,) =  cvxBooster.poolInfo(poolId);
+        (, , , address rewardPool, , ) = cvxBooster.poolInfo(poolId);
         return ICvxBaseRewardPool(rewardPool).balanceOf(address(this));
     }
 
     /// @notice Claims all rewards from the convex pool
     /// @dev This is used to claim rewards when looping
     function claimRewardsFromPool() public {
-        (,,, address rewardPool,,) =  cvxBooster.poolInfo(poolId);
-         ICvxBaseRewardPool(rewardPool).getReward();
+        (, , , address rewardPool, , ) = cvxBooster.poolInfo(poolId);
+        ICvxBaseRewardPool(rewardPool).getReward();
     }
-    function editVault(bool add, address _vault) external onlyRole(DEFAULT_ADMIN_ROLE) {
+
+    function editVault(bool add, address _vault)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
         if (add) {
             vaults.add(_vault);
             _grantRole(VAULT, _vault);
@@ -219,7 +278,10 @@ contract AlluoVaultPool is Initializable, PausableUpgradeable, AccessControlUpgr
         }
     }
 
-    function editYieldTokens(bool add, address _yieldToken) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function editYieldTokens(bool add, address _yieldToken)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
         if (add) {
             yieldTokens.add(_yieldToken);
         } else {
@@ -227,10 +289,13 @@ contract AlluoVaultPool is Initializable, PausableUpgradeable, AccessControlUpgr
         }
     }
 
-    function changeEntryToken(address _entryToken) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function changeEntryToken(address _entryToken)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
         entryToken = IERC20MetadataUpgradeable(_entryToken);
     }
-    
+
     function changeUpgradeStatus(bool _status)
         external
         onlyRole(DEFAULT_ADMIN_ROLE)
@@ -245,7 +310,6 @@ contract AlluoVaultPool is Initializable, PausableUpgradeable, AccessControlUpgr
     function unpause() external onlyRole(DEFAULT_ADMIN_ROLE) {
         _unpause();
     }
-
 
     function grantRole(bytes32 role, address account)
         public
@@ -266,6 +330,4 @@ contract AlluoVaultPool is Initializable, PausableUpgradeable, AccessControlUpgr
         require(upgradeStatus, "Upgrade not allowed");
         upgradeStatus = false;
     }
-
-    
 }
