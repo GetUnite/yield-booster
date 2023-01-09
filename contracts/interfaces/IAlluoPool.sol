@@ -22,4 +22,8 @@ interface IAlluoPool {
     function balances(address) external view returns (uint256);
 
     function totalBalances() external view returns (uint256);
+
+    function editVault(bool, address) external;
+
+    function grantRole(bytes32 role, address account) external;
 }

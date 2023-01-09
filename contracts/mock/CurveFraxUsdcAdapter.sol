@@ -86,18 +86,18 @@ contract CurveFraxUsdcAdapter is IExchangeAdapter {
 
     // 0xe83bbb76  =>  enterPool(address,address,address,uint256)
     function enterPool(
-        address pool,
-        address fromToken,
-        uint256 amount
+        address,
+        address,
+        uint256
     ) external payable returns (uint256) {
         revert("CurveFraxUsdcAdapter: Can't Swap");
     }
 
     // 0x9d756192  =>  exitPool(address,address,address,uint256)
     function exitPool(
-        address pool,
-        address toToken,
-        uint256 amount
+        address,
+        address,
+        uint256
     ) external payable returns (uint256) {
         revert("CurveFraxUsdcAdapter: Can't Swap");
     }

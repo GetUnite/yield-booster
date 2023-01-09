@@ -37,10 +37,10 @@ interface ICurveCvxEth {
         uint256 min_dy
     ) external payable returns (uint256);
 
-    function add_liquidity(
-        uint256[2] memory _amounts,
-        uint256 _min_mint_amount
-    ) external payable returns (uint256);
+    function add_liquidity(uint256[2] memory _amounts, uint256 _min_mint_amount)
+        external
+        payable
+        returns (uint256);
 
     function remove_liquidity_one_coin(
         uint256 _burn_amount,
@@ -86,18 +86,18 @@ contract CurveCvxEthAdapter is IExchangeAdapter {
 
     // 0xe83bbb76  =>  enterPool(address,address,address,uint256)
     function enterPool(
-        address pool,
-        address fromToken,
-        uint256 amount
+        address,
+        address,
+        uint256
     ) external payable returns (uint256) {
         revert("CurveCvxEthAdapter: Can't Swap");
     }
 
     // 0x9d756192  =>  exitPool(address,address,address,uint256)
     function exitPool(
-        address pool,
-        address toToken,
-        uint256 amount
+        address,
+        address,
+        uint256
     ) external payable returns (uint256) {
         revert("CurveCvxEthAdapter: Can't Swap");
     }
