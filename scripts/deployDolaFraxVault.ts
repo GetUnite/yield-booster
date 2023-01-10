@@ -14,7 +14,7 @@ async function main() {
   const ZERO_ADDR = ethers.constants.AddressZero;
   let gnosis = "0x1F020A4943EB57cd3b2213A66b355CB662Ea43C3"
 
-  AlluoVault = await upgrades.deployProxy(AlluoVaultFactory, [
+  let AlluoVault = await upgrades.deployProxy(AlluoVaultFactory, [
     "Dola-FraxBP Vault",
     "dolaFrax",
     dolaFraxbpToken.address, // underlying token
