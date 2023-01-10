@@ -11,7 +11,7 @@ async function main() {
   const dolaFraxbpToken = await ethers.getContractAt("IERC20MetadataUpgradeable", "0xE57180685E3348589E9521aa53Af0BCD497E884d");
   const dolaStableCoin = await ethers.getContractAt("IERC20MetadataUpgradeable", "0x865377367054516e17014CcdED1e7d814EDC9ce4");
   const fraxBP = await ethers.getContractAt("IERC20MetadataUpgradeable", "0x3175Df0976dFA876431C2E9eE6Bc45b65d3473CC");
-  const ZERO_ADDR = ethers.constants.AddressZero;
+  const alluoPool = await ethers.getContractAt("AlluoVaultPool", "0x470e486acA0e215C925ddcc3A9D446735AabB714");
   let gnosis = "0x1F020A4943EB57cd3b2213A66b355CB662Ea43C3"
 
   let AlluoVault = await upgrades.deployProxy(AlluoVaultFactory, [
@@ -19,7 +19,7 @@ async function main() {
     "dolaFrax",
     dolaFraxbpToken.address, // underlying token
     rewardToken.address,// like in other contracts
-    ZERO_ADDR, // set pool later
+    alluoPool.address, // set pool later
     gnosis,
     "0x84a0856b038eaAd1cC7E297cF34A7e72685A8693", // trusted wallet for meta transactions
     [crv.address, cvx.address], // 

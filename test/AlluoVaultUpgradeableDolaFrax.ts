@@ -58,8 +58,8 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
     });
 
     beforeEach(async () => {
-        await resetNetwork();
 
+        await resetNetwork();
         signers = await ethers.getSigners();
 
         usdc = await ethers.getContractAt("IERC20MetadataUpgradeable", "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48")
@@ -184,12 +184,15 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
 
     it("FRAXBP: Deposit some Lp for vault tokens and then burn them for the same LPs back.", async function () {
         const lpBalance = await dolaFraxbpToken.balanceOf(signers[0].address);
+        console.log('balance', lpBalance);
         await dolaFraxbpToken.approve(AlluoVault.address, ethers.constants.MaxUint256);
         await AlluoVault.deposit(lpBalance, signers[0].address);
 
         await AlluoVault.stakeUnderlying();
-        await skipDays(10);
+        await skipDays(1);
         await alluoPool.connect(admin).farm();
+        await skipDays(1);
+        console.log("Shareholder accumulated", await AlluoVault.shareholderAccruedRewards(signers[0].address));
 
         await AlluoVault.withdraw(lpBalance, signers[0].address, signers[0].address);
         await AlluoVault.claimRewards();

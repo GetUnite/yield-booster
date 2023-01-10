@@ -171,8 +171,10 @@ describe("Alluo Vault Upgradeable Tests", function () {
         await AlluoVault.deposit(lpBalance, signers[0].address);
 
         await AlluoVault.stakeUnderlying();
-        await skipDays(10);
+        await skipDays(1);
         await alluoPool.connect(admin).farm();
+        await skipDays(1);
+        console.log("Shareholder accumulated", await AlluoVault.shareholderAccruedRewards(signers[0].address));
 
         await AlluoVault.withdraw(lpBalance, signers[0].address, signers[0].address);
         await AlluoVault.claimRewards();
