@@ -778,7 +778,7 @@
     },
     {
       "address": "0xd038A2EE73b64F30d65802Ad188F27921656f28F",
-      "txHash": "0xd6445e6effb99b77f67128d04d70776ecb4a453ee7c4d3e00895f0682163f4d4",
+      "txHash": "0xb9148f6ce66eaf6e896ce4a6962e6da5977d9cb970385ae6b05127b35ed7a496",
       "kind": "uups"
     }
   ],
@@ -2053,9 +2053,9 @@
         }
       }
     },
-    "6760c77bab0cc0d6e78eb9705d739933780b2d9bb37b0cf10a185a25efb83f06": {
+    "a3444c10a6f3e27a5a5dfd1ba679a45ac12e38e29d149e773d67a3c3007cc9f7": {
       "address": "0x01cf58e264d7578D4C67022c58A24CbC4C4a304E",
-      "txHash": "0x579ec4b49a4bd457d1a02fc83d47395ea261e5422daa1e9e12c04cf5ba871988",
+      "txHash": "0x21bd9717fc1e3dcd56831d76931ff975d684f914306a969949142ca7b0771e0d",
       "layout": {
         "solcVersion": "0.8.11",
         "storage": [
@@ -2218,7 +2218,7 @@
             "slot": "401",
             "type": "t_mapping(t_address,t_uint256)",
             "contract": "AlluoConvexVault",
-            "src": "contracts/AlluoConvexVault.sol:46"
+            "src": "contracts/AlluoConvexVault.sol:50"
           },
           {
             "label": "rewards",
@@ -2226,119 +2226,151 @@
             "slot": "402",
             "type": "t_mapping(t_address,t_uint256)",
             "contract": "AlluoConvexVault",
-            "src": "contracts/AlluoConvexVault.sol:47"
-          },
-          {
-            "label": "withdrawalqueue",
-            "offset": 0,
-            "slot": "403",
-            "type": "t_array(t_address)dyn_storage",
-            "contract": "AlluoConvexVault",
-            "src": "contracts/AlluoConvexVault.sol:49"
-          },
-          {
-            "label": "trustedForwarder",
-            "offset": 0,
-            "slot": "404",
-            "type": "t_address",
-            "contract": "AlluoConvexVault",
             "src": "contracts/AlluoConvexVault.sol:51"
           },
           {
-            "label": "alluoPool",
+            "label": "userWithdrawals",
             "offset": 0,
-            "slot": "405",
-            "type": "t_address",
+            "slot": "403",
+            "type": "t_mapping(t_address,t_struct(Shareholder)5365_storage)",
             "contract": "AlluoConvexVault",
             "src": "contracts/AlluoConvexVault.sol:52"
           },
           {
-            "label": "fraxPool",
+            "label": "withdrawalqueue",
             "offset": 0,
-            "slot": "406",
-            "type": "t_address",
+            "slot": "404",
+            "type": "t_array(t_address)dyn_storage",
             "contract": "AlluoConvexVault",
             "src": "contracts/AlluoConvexVault.sol:53"
           },
           {
-            "label": "gnosis",
+            "label": "trustedForwarder",
             "offset": 0,
-            "slot": "407",
+            "slot": "405",
             "type": "t_address",
             "contract": "AlluoConvexVault",
-            "src": "contracts/AlluoConvexVault.sol:54"
+            "src": "contracts/AlluoConvexVault.sol:55"
           },
           {
-            "label": "poolId",
+            "label": "alluoPool",
             "offset": 0,
-            "slot": "408",
-            "type": "t_uint256",
+            "slot": "406",
+            "type": "t_address",
             "contract": "AlluoConvexVault",
             "src": "contracts/AlluoConvexVault.sol:56"
           },
           {
-            "label": "rewardsPerShareAccumulated",
+            "label": "fraxPool",
             "offset": 0,
-            "slot": "409",
-            "type": "t_uint256",
+            "slot": "407",
+            "type": "t_address",
             "contract": "AlluoConvexVault",
             "src": "contracts/AlluoConvexVault.sol:57"
           },
           {
-            "label": "adminFee",
+            "label": "stakingToken",
             "offset": 0,
-            "slot": "410",
-            "type": "t_uint256",
+            "slot": "408",
+            "type": "t_address",
             "contract": "AlluoConvexVault",
             "src": "contracts/AlluoConvexVault.sol:58"
           },
           {
-            "label": "vaultRewardsBefore",
+            "label": "gnosis",
             "offset": 0,
-            "slot": "411",
-            "type": "t_uint256",
+            "slot": "409",
+            "type": "t_address",
             "contract": "AlluoConvexVault",
             "src": "contracts/AlluoConvexVault.sol:59"
           },
           {
-            "label": "duration",
+            "label": "poolId",
             "offset": 0,
-            "slot": "412",
+            "slot": "410",
             "type": "t_uint256",
             "contract": "AlluoConvexVault",
-            "src": "contracts/AlluoConvexVault.sol:60"
+            "src": "contracts/AlluoConvexVault.sol:61"
           },
           {
-            "label": "upgradeStatus",
+            "label": "rewardsPerShareAccumulated",
             "offset": 0,
-            "slot": "413",
-            "type": "t_bool",
+            "slot": "411",
+            "type": "t_uint256",
             "contract": "AlluoConvexVault",
             "src": "contracts/AlluoConvexVault.sol:62"
           },
           {
-            "label": "rewardToken",
-            "offset": 1,
-            "slot": "413",
-            "type": "t_contract(IERC20MetadataUpgradeable)2817",
+            "label": "adminFee",
+            "offset": 0,
+            "slot": "412",
+            "type": "t_uint256",
             "contract": "AlluoConvexVault",
             "src": "contracts/AlluoConvexVault.sol:63"
           },
           {
-            "label": "yieldTokens",
+            "label": "vaultRewardsBefore",
+            "offset": 0,
+            "slot": "413",
+            "type": "t_uint256",
+            "contract": "AlluoConvexVault",
+            "src": "contracts/AlluoConvexVault.sol:64"
+          },
+          {
+            "label": "duration",
             "offset": 0,
             "slot": "414",
-            "type": "t_struct(AddressSet)4942_storage",
+            "type": "t_uint256",
             "contract": "AlluoConvexVault",
             "src": "contracts/AlluoConvexVault.sol:65"
           },
           {
-            "label": "poolTokens",
+            "label": "unsatisfiedWithdrawals",
             "offset": 0,
-            "slot": "416",
-            "type": "t_struct(AddressSet)4942_storage",
+            "slot": "415",
+            "type": "t_uint256",
             "contract": "AlluoConvexVault",
             "src": "contracts/AlluoConvexVault.sol:66"
+          },
+          {
+            "label": "totalRequestedWithdrawals",
+            "offset": 0,
+            "slot": "416",
+            "type": "t_uint256",
+            "contract": "AlluoConvexVault",
+            "src": "contracts/AlluoConvexVault.sol:67"
+          },
+          {
+            "label": "upgradeStatus",
+            "offset": 0,
+            "slot": "417",
+            "type": "t_bool",
+            "contract": "AlluoConvexVault",
+            "src": "contracts/AlluoConvexVault.sol:69"
+          },
+          {
+            "label": "rewardToken",
+            "offset": 1,
+            "slot": "417",
+            "type": "t_contract(IERC20MetadataUpgradeable)2817",
+            "contract": "AlluoConvexVault",
+            "src": "contracts/AlluoConvexVault.sol:70"
+          },
+          {
+            "label": "yieldTokens",
+            "offset": 0,
+            "slot": "418",
+            "type": "t_struct(AddressSet)4942_storage",
+            "contract": "AlluoConvexVault",
+            "src": "contracts/AlluoConvexVault.sol:72"
+          },
+          {
+            "label": "poolTokens",
+            "offset": 0,
+            "slot": "420",
+            "type": "t_struct(AddressSet)4942_storage",
+            "contract": "AlluoConvexVault",
+            "src": "contracts/AlluoConvexVault.sol:73"
           }
         ],
         "types": {
@@ -2388,6 +2420,10 @@
           },
           "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
             "label": "mapping(address => mapping(address => uint256))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_struct(Shareholder)5365_storage)": {
+            "label": "mapping(address => struct AlluoConvexVault.Shareholder)",
             "numberOfBytes": "32"
           },
           "t_mapping(t_address,t_uint256)": {
@@ -2448,6 +2484,24 @@
               {
                 "label": "_indexes",
                 "type": "t_mapping(t_bytes32,t_uint256)",
+                "offset": 0,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_struct(Shareholder)5365_storage": {
+            "label": "struct AlluoConvexVault.Shareholder",
+            "members": [
+              {
+                "label": "withdrawalRequested",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "withdrawalAvailable",
+                "type": "t_uint256",
                 "offset": 0,
                 "slot": "1"
               }
