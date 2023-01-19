@@ -147,7 +147,7 @@ describe("Cvx Eth Alluo Vault Upgradeable Tests", function () {
         expect(Number(lpBalance)).equal(Number(await AlluoVault.balanceOf(signers[0].address)));
     })
 
-    it.only("Deposit some LP and wait for rewards to accumulate", async function () {
+    it("Deposit some LP and wait for rewards to accumulate", async function () {
         const lpBalance = await cvxEth.balanceOf(signers[0].address);
         console.log("Balance before of Cvx-ETH Lp", lpBalance)
         await cvxEth.approve(AlluoVault.address, ethers.constants.MaxUint256);
