@@ -59,7 +59,7 @@ contract AlluoConvexVault is
     uint256 public adminFee;
     uint256 public vaultRewardsBefore;
     uint256 public duration;
-    uint256 public unsatisfiedWithdrawals;
+    // uint256 public unsatisfiedWithdrawals;
     uint256 public totalRequestedWithdrawals;
 
     bool public upgradeStatus;
@@ -127,20 +127,68 @@ contract AlluoConvexVault is
         poolId = IConvexWrapper(stakingToken).convexPoolId();
     }
 
-    /// @notice Loop called periodically to compound reward tokens into the respective alluo pool
-    /// @dev Claims rewards, transfers all rewards to the alluoPool. Then, the pool is farmed and rewards are credited accordingly per share.
-    function loopRewards() external onlyRole(DEFAULT_ADMIN_ROLE) {
-        uint256 vaultRewardAfter = IAlluoPool(alluoPool).rewardTokenBalance();
-        uint256 totalRewards = vaultRewardAfter - vaultRewardsBefore;
-        if (totalRewards > 0) {
-            uint256 totalFees = (totalRewards * adminFee) / 10**4;
-            uint256 newRewards = totalRewards - totalFees;
-            rewards[gnosis] += totalFees;
-            rewardsPerShareAccumulated += (newRewards * 10**18) / totalSupply();
-        }
-        // console.log("Vault reward after", vaultRewardAfter);
-        // console.log("Vault rewards before", vaultRewardsBefore);
-        // console.log("Total rewards", totalRewards);
+    /// @notice Deposits an amount of LP underlying and mints shares in the vault. Wrapps LP tokens deposited to the vault.
+    /// @dev Read the difference between deposit and mint at the start of the contract. Makes sure to distribute rewards before any actions occur
+    /// @param assets Amount of assets deposited
+    /// @return shares amount of shares minted
+    function deposit(uint256 assets) external returns (uint256) {
+        _distributeReward(_msgSender());
+        uint256 shares = deposit(assets, _msgSender());
+        return shares;
+    }
+
+    /// @notice Deposits an amount of any ERC20 and mints shares in the vault.
+    /// @dev Read the difference between deposit and mint at the start of the contract. Makes sure to distribute rewards before any actions occur
+    ///      Converts all the entry tokens to a token eligible for adding liquidity. Then carry out same deposit procedure
+    /// @param assets Amount of assets deposited
+    /// @param entryToken token deposited
+    /// @return shares amount of shares minted
+    function depositWithoutLP(uint256 assets, address entryToken)
+        external
+        returns (uint256)
+    {
+        _distributeReward(_msgSender());
+        IERC20MetadataUpgradeable(entryToken).safeTransferFrom(
+            _msgSender(),
+            address(this),
+            assets
+        );
+        IERC20MetadataUpgradeable(entryToken).safeIncreaseAllowance(
+            address(EXCHANGE),
+            assets
+        );
+        assets = EXCHANGE.exchange(entryToken, asset(), assets, 0);
+
+        require(
+            assets <= _nonLpMaxDeposit(assets),
+            "ERC4626: deposit more than max"
+        );
+        uint256 shares = _nonLpPreviewDeposit(assets);
+        _mint(_msgSender(), shares);
+
+        emit Deposit(_msgSender(), _msgSender(), assets, shares);
+        return shares;
+    }
+
+    /** @dev See {IERC4626-mint}.**/
+    /// Standard ERC4626 mint function but distributes rewards before deposits
+    function mint(uint256 shares, address receiver)
+        public
+        override
+        returns (uint256)
+    {
+        _distributeReward(_msgSender());
+        require(shares <= maxMint(receiver), "ERC4626: mint more than max");
+        uint256 assets = previewMint(shares);
+        _deposit(_msgSender(), receiver, assets, shares);
+        return assets;
+    }
+
+    /// @notice Claims all rewards.
+    /// @dev Used when looping rewards.
+    function claimRewardsFromPool() public {
+        IFraxFarmERC20(fraxPool).getReward(address(this)); // get frax
+        IConvexWrapper(stakingToken).getReward(address(this)); // get crv and cvx
     }
 
     /// @notice Claims all rewards from curve and convex pools, converts to cvx and transfers to Alluo Booster Pool.
@@ -195,28 +243,52 @@ contract AlluoConvexVault is
         return rewardArray;
     }
 
+    function _accruedCurveRewards()
+        internal
+        view
+        returns (IConvexWrapper.EarnedData[] memory)
+    {
+        try IConvexWrapper(stakingToken).earned(address(this)) returns (
+            IConvexWrapper.EarnedData[] memory curveRewards
+        ) {
+            return curveRewards;
+        } catch (bytes memory) {
+            return IConvexWrapper(stakingToken).earnedView(address(this));
+        }
+    }
+
     /// @notice Returns all accrued rewards.
     /// @return RewardData[] An array of addresses and accrued rewards of each reward token.
     function accruedRewards() public view returns (RewardData[] memory) {
+        // TODO: add the balance of all reward tokens of the vault
         RewardData[] memory fraxRewards = _accruedFraxRewards();
-        // console.log("added frax rewards");
-        IConvexWrapper.EarnedData[] memory curveRewards = IConvexWrapper(
-            stakingToken
-        ).earned(address(this));
-        // console.log("got reward arrrays");
+        console.log("added frax rewards");
+        IConvexWrapper.EarnedData[]
+            memory curveRewards = _accruedCurveRewards();
+        console.log("got reward arrrays");
 
         RewardData[] memory rewardArray = new RewardData[](
             fraxRewards.length + curveRewards.length
         );
 
         for (uint256 i; i < fraxRewards.length; i++) {
-            rewardArray[i] = fraxRewards[i];
+            RewardData memory reward = RewardData(
+                fraxRewards[i].token,
+                fraxRewards[i].amount +
+                    IERC20MetadataUpgradeable(fraxRewards[i].token).balanceOf(
+                        address(this)
+                    )
+            );
+            rewardArray[i] = reward;
         }
 
         for (uint256 i; i < curveRewards.length; i++) {
             RewardData memory reward = RewardData(
                 curveRewards[i].token,
-                curveRewards[i].amount
+                curveRewards[i].amount +
+                    IERC20MetadataUpgradeable(curveRewards[i].token).balanceOf(
+                        address(this)
+                    )
             );
             rewardArray[fraxRewards.length + i] = reward;
         }
@@ -258,21 +330,6 @@ contract AlluoConvexVault is
         return (vaultAccruals, poolAccruals);
     }
 
-    /// @notice Claims all rewards.
-    /// @dev Used when looping rewards.
-    function claimRewardsFromPool() public {
-        IFraxFarmERC20(fraxPool).getReward(address(this)); // get frax
-        IConvexWrapper(stakingToken).getReward(address(this)); // get crv and cvx
-    }
-
-    /// @notice Accordingly credits the account with accumulated rewards
-    /// @dev Gives the correct reward per share using the earned view function and then ensures that this is accounted for.
-    /// @param account Shareholder
-    function _distributeReward(address account) internal {
-        rewards[account] = earned(account);
-        userRewardPaid[account] = rewardsPerShareAccumulated;
-    }
-
     /// @notice Calculates the total amount of undistributed rewards an account has a claim to
     /// @dev First calculate the amount per share not paid and then multiply this by the amount of shares the user owns.
     /// @param account Shareholder
@@ -284,128 +341,12 @@ contract AlluoConvexVault is
         return undistributedRewards + rewards[account];
     }
 
-    /// @notice Deposits an amount of LP underlying and mints shares in the vault. Wrapps LP tokens deposited to the vault.
-    /// @dev Read the difference between deposit and mint at the start of the contract. Makes sure to distribute rewards before any actions occur
-    /// @param assets Amount of assets deposited
-    /// @return shares amount of shares minted
-    function deposit(uint256 assets) external returns (uint256) {
-        _distributeReward(_msgSender()); // no change
-        uint256 shares = deposit(assets, _msgSender());
-        _wrapLP(assets);
-        return shares;
-    }
-
-    /// @notice Deposits an amount of any ERC20 and mints shares in the vault.
-    /// @dev Read the difference between deposit and mint at the start of the contract. Makes sure to distribute rewards before any actions occur
-    ///      Converts all the entry tokens to a token eligible for adding liquidity. Then carry out same deposit procedure
-    /// @param assets Amount of assets deposited
-    /// @param entryToken token deposited
-    /// @return shares amount of shares minted
-    function depositWithoutLP(uint256 assets, address entryToken)
-        external
-        returns (uint256)
-    {
-        _distributeReward(_msgSender());
-        IERC20MetadataUpgradeable(entryToken).safeTransferFrom(
-            _msgSender(),
-            address(this),
-            assets
-        );
-        IERC20MetadataUpgradeable(entryToken).safeIncreaseAllowance(
-            address(EXCHANGE),
-            assets
-        );
-        assets = EXCHANGE.exchange(entryToken, asset(), assets, 0);
-
-        require(
-            assets <= _nonLpMaxDeposit(assets),
-            "ERC4626: deposit more than max"
-        );
-        uint256 shares = _nonLpPreviewDeposit(assets);
-        _mint(_msgSender(), shares);
-        _wrapLP(assets);
-
-        emit Deposit(_msgSender(), _msgSender(), assets, shares);
-        return shares;
-    }
-
-    /// @notice Wraps curve LP tokens before staking into Convex
-    /// @dev LP tokens are to be wrapped before locking in Convex
-    /// @param assets amount of LP tokens to wrap
-    function _wrapLP(uint256 assets) internal {
-        IERC20MetadataUpgradeable(asset()).safeIncreaseAllowance(
-            stakingToken,
-            assets
-        ); // check balance of wrapped lp tokens after user deposits
-        IConvexWrapper(stakingToken).deposit(assets, address(this));
-    }
-
-    function _nonLpMaxDeposit(uint256 assets) internal view returns (uint256) {
-        return
-            totalAssets() - assets > 0 || totalSupply() == 0
-                ? type(uint256).max
-                : 0;
-    }
-
-    function _nonLpPreviewDeposit(uint256 assets)
-        internal
-        view
-        returns (uint256)
-    {
-        uint256 supply = totalSupply();
-        return
-            (assets == 0 || supply == 0)
-                ? assets
-                : assets.mulDiv(
-                    supply,
-                    totalAssets() - assets,
-                    MathUpgradeable.Rounding.Down
-                );
-    }
-
-    /** @dev See {IERC4626-mint}.**/
-    /// Standard ERC4626 mint function but distributes rewards before deposits
-    function mint(uint256 shares, address receiver)
-        public
-        override
-        returns (uint256)
-    {
-        _distributeReward(_msgSender());
-        require(shares <= maxMint(receiver), "ERC4626: mint more than max");
-        uint256 assets = previewMint(shares);
-        _deposit(_msgSender(), receiver, assets, shares);
-        _wrapLP(assets);
-        return assets;
-    }
-
-    /// @notice Requests withdrawal from frax convex adding a user to the queue.
-    /// @param assets Number of underlying assets to withdraw.
-    /// @param owner Shareholder.
-    function requestWithdrawal(uint256 assets, address owner) public {
-        require(
-            assets <= maxWithdraw(owner),
-            "ERC4626: withdraw more than max"
-        );
-        if (assets > 0 && userWithdrawals[owner].withdrawalRequested == 0) {
-            withdrawalqueue.push(owner);
-        }
-        userWithdrawals[owner].withdrawalRequested = assets;
-        unsatisfiedWithdrawals += assets;
-        totalRequestedWithdrawals += assets;
-    }
-
-    /** @dev See {IERC4626-withdraw}. */
-    function withdraw(
-        uint256 assets,
-        address receiver,
-        address owner
-    ) public virtual override returns (uint256) {
-        require(
-            assets <= userWithdrawals[owner].withdrawalAvailable,
-            "AlluoVault: withdraw over balance"
-        );
-        _withdraw(_msgSender(), receiver, owner, assets, assets);
-        return assets;
+    /// @notice Accordingly credits the account with accumulated rewards
+    /// @dev Gives the correct reward per share using the earned view function and then ensures that this is accounted for.
+    /// @param account Shareholder
+    function _distributeReward(address account) internal {
+        rewards[account] = earned(account);
+        userRewardPaid[account] = rewardsPerShareAccumulated;
     }
 
     function _withdraw(
@@ -415,82 +356,48 @@ contract AlluoConvexVault is
         uint256 assets,
         uint256 shares
     ) internal virtual override {
+        _distributeReward(_msgSender());
         if (caller != owner) {
             _spendAllowance(owner, caller, shares);
         }
-        userWithdrawals[owner].withdrawalAvailable -= assets;
-        unsatisfiedWithdrawals -= assets;
+        _burn(owner, shares);
 
-        IConvexWrapper(stakingToken).withdrawAndUnwrap(assets);
-
-        SafeERC20Upgradeable.safeTransfer(
-            IERC20MetadataUpgradeable(asset()),
-            receiver,
-            assets
-        );
-        emit Withdraw(caller, receiver, owner, assets, shares);
-    }
-
-    /// @notice Allows withdrawals in any ERC20 token supported by the Alluo Exchange
-    /// @param assets  Amount of vault shares to burn
-    /// @param receiver Recipient of the tokens
-    /// @param owner Standrad ERC4626 owner
-    /// @param exitToken Token that you want to receive by burning shares in the vault and the Lp token
-    /// @return uint256 amount of exitToken assets received
-    function withdrawToNonLp(
-        uint256 assets,
-        address receiver,
-        address owner,
-        address exitToken
-    ) public returns (uint256) {
-        require(
-            assets <= userWithdrawals[owner].withdrawalAvailable,
-            "AlluoVault: withdraw over balance"
-        );
-        if (_msgSender() != owner) {
-            _spendAllowance(owner, _msgSender(), assets);
+        if (userWithdrawals[owner].withdrawalRequested == 0) {
+            withdrawalqueue.push(owner);
+        } else {
+            // unsatisfiedWithdrawals -= assets;
+            totalRequestedWithdrawals -= assets;
         }
 
-        userWithdrawals[owner].withdrawalAvailable -= assets;
-        unsatisfiedWithdrawals -= assets;
+        userWithdrawals[owner].withdrawalRequested += assets;
+        // unsatisfiedWithdrawals += assets;
+        totalRequestedWithdrawals += assets;
 
-        IConvexWrapper(stakingToken).withdrawAndUnwrap(assets);
-        IERC20MetadataUpgradeable(asset()).safeIncreaseAllowance(
-            address(EXCHANGE),
-            assets
-        );
-        assets = EXCHANGE.exchange(asset(), exitToken, assets, 0);
-        IERC20MetadataUpgradeable(exitToken).safeTransfer(receiver, assets);
-        return assets;
+        emit Withdraw(caller, receiver, owner, assets, shares); //should we keep event here?
     }
 
-    // function requestRedeem(uint256 shares, address owner) public {
-    //     require(shares <= maxRedeem(owner), "ERC4626: redeem more than max");
-    //     uint256 assets = previewRedeem(shares);
-
-    //     if (assets > 0 && userWithdrawals[owner].withdrawalRequested == 0) {
-    //         withdrawalqueue.push(owner);
-    //     }
-    //     userWithdrawals[owner].withdrawalRequested = assets;
-    //     unsatisfiedWithdrawals += assets;
-    //     totalRequestedWithdrawals += assets;
-    // }
-
-    /// @param assets  Amount of vault shares to burn
+    /// @notice Claims the unlocked funds previously requested for withdrawal.
+    /// @dev Exchanges claimed lp tokens to exit token and sends to the user.
+    /// @param assets amount of lps to claim
+    /// @param exitToken the token to be transferred to the user
     /// @param receiver Recipient of the tokens
-    /// @param owner Standrad ERC4626 owner
-    /** @dev See {IERC4626-redeem}. */
-    function redeem(
-        uint256 shares,
-        address receiver,
-        address owner
-    ) public virtual override returns (uint256) {
-        uint256 assets = previewRedeem(shares);
+    function claim(
+        uint256 assets,
+        address exitToken,
+        address receiver
+    ) public virtual returns (uint256) {
         require(
-            assets <= userWithdrawals[owner].withdrawalAvailable,
-            "AlluoVault: redeem over balance"
+            assets <= userWithdrawals[receiver].withdrawalAvailable,
+            "AlluoVault: claim too high"
         );
-        _withdraw(_msgSender(), receiver, owner, assets, shares);
+        userWithdrawals[receiver].withdrawalAvailable -= assets;
+        // unsatisfiedWithdrawals -= assets;
+        totalRequestedWithdrawals -= assets;
+
+        if (exitToken != asset()) {
+            assets = EXCHANGE.exchange(asset(), exitToken, assets, 0);
+        }
+        IERC20MetadataUpgradeable(exitToken).safeTransfer(receiver, assets);
         return assets;
     }
 
@@ -534,11 +441,76 @@ contract AlluoConvexVault is
         return rewardTokens;
     }
 
+    /// @notice Wraps curve LP tokens before staking into Convex
+    /// @dev LP tokens are to be wrapped before locking in Convex
+    /// @param assets amount of LP tokens to wrap
+    function _wrapLP(uint256 assets) internal {
+        IERC20MetadataUpgradeable(asset()).safeIncreaseAllowance(
+            stakingToken,
+            assets
+        ); // check balance of wrapped lp tokens after user deposits
+        IConvexWrapper(stakingToken).deposit(assets, address(this));
+    }
+
     /// @dev To be called periodically by resolver. kek_id is deleted in frax convex pool once all funds are unlocked
     function stakeUnderlying() external onlyRole(DEFAULT_ADMIN_ROLE) {
-        // console.log("\nstart of new cycle...\n");
+        console.log("\nstart of new cycle...\n");
 
-        // 1. Unlock from frax convex if min_lock_time passed, otherwise just lockAdditioinal
+        // 1. Wrap Lps
+        uint256 assets = IERC20MetadataUpgradeable(asset()).balanceOf(
+            address(this)
+        );
+        if (assets > 0) {
+            _wrapLP(assets);
+        }
+
+        // 2. Lock additional
+        uint256 wrappedBalance = IConvexWrapper(stakingToken).balanceOf(
+            address(this)
+        );
+        if (wrappedBalance > 0) {
+            IFraxFarmERC20.LockedStake[] memory lockedstakes = IFraxFarmERC20(
+                fraxPool
+            ).lockedStakesOf(address(this));
+
+            IERC20MetadataUpgradeable(stakingToken).safeIncreaseAllowance(
+                fraxPool,
+                wrappedBalance
+            );
+            if (lockedstakes.length == 1) {
+                IFraxFarmERC20(fraxPool).lockAdditional(
+                    lockedstakes[0].kek_id,
+                    wrappedBalance
+                );
+            } else if (lockedstakes.length == 0) {
+                IFraxFarmERC20(fraxPool).stakeLocked(wrappedBalance, duration);
+            }
+        }
+    }
+
+    /// @notice Unwraps lp tokens of users in the queue
+    /// @dev Internal function to be called only when funds are unlocked from Frax
+    function _processWithdrawalRequests() internal {
+        uint256 totalNumberOfWithdrawals = withdrawalqueue.length;
+        if (totalNumberOfWithdrawals != 0) {
+            for (uint256 i = totalNumberOfWithdrawals; i > 0; i--) {
+                uint256 requestedAmount = userWithdrawals[
+                    withdrawalqueue[i - 1]
+                ].withdrawalRequested;
+                IConvexWrapper(stakingToken).withdrawAndUnwrap(requestedAmount);
+
+                // totalRequestedWithdrawals -= requestedAmount;
+                userWithdrawals[withdrawalqueue[i - 1]]
+                    .withdrawalAvailable += requestedAmount;
+                userWithdrawals[withdrawalqueue[i - 1]]
+                    .withdrawalRequested -= requestedAmount;
+                withdrawalqueue.pop();
+            }
+        }
+    }
+
+    function _relockToFrax() internal {
+        // 1. unlock from frax if possible
         IFraxFarmERC20.LockedStake[] memory lockedstakes = IFraxFarmERC20(
             fraxPool
         ).lockedStakesOf(address(this));
@@ -549,63 +521,41 @@ contract AlluoConvexVault is
                     lockedstakes[0].kek_id,
                     address(this)
                 );
-                // console.log("unlocked from frax");
 
-                // 2. Keep the necessary amount to satisfy withdrawal claims and burn the shares of those in the queue
-                uint256 totalNumberOfWithdrawals = withdrawalqueue.length;
-                if (totalNumberOfWithdrawals != 0) {
-                    for (uint256 i = totalNumberOfWithdrawals; i > 0; i--) {
-                        uint256 requestedAmount = userWithdrawals[
-                            withdrawalqueue[i - 1]
-                        ].withdrawalRequested;
-                        uint256 shares = previewWithdraw(requestedAmount);
-                        _burn(withdrawalqueue[i - 1], shares); // emit Transfer(account, address(0), amount); - this event should be grabbed by front end
-                        totalRequestedWithdrawals -= requestedAmount;
+                // 2. Keep the necessary amount to satisfy withdrawal claims and unwrap lps of those in the queue
+                _processWithdrawalRequests();
 
-                        userWithdrawals[withdrawalqueue[i - 1]]
-                            .withdrawalAvailable += requestedAmount;
-                        userWithdrawals[withdrawalqueue[i - 1]]
-                            .withdrawalRequested -= requestedAmount;
-
-                        // console.log("burnt", shares, " shares");
-                        withdrawalqueue.pop();
-                    }
-                }
-            } else {
-                uint256 liquidity = IERC20MetadataUpgradeable(stakingToken)
-                    .balanceOf(address(this));
-                if (liquidity > 0) {
+                // 3. Lock remaining to frax convex
+                uint256 remainingsToLock = IERC20MetadataUpgradeable(
+                    stakingToken
+                ).balanceOf(address(this));
+                if (remainingsToLock > 0) {
                     IERC20MetadataUpgradeable(stakingToken)
-                        .safeIncreaseAllowance(fraxPool, liquidity);
-                    IFraxFarmERC20(fraxPool).lockAdditional(
-                        lockedstakes[0].kek_id,
-                        liquidity
+                        .safeIncreaseAllowance(fraxPool, remainingsToLock);
+                    IFraxFarmERC20(fraxPool).stakeLocked(
+                        remainingsToLock,
+                        duration
                     );
-                    // console.log("locked additional to frax");
                 }
             }
-        }
+        } // should we add stakeLocked if lockedstakes.length == 0 ?
+    }
 
-        // console.log(
-        //     "\nnew balance of staking token",
-        //     IERC20MetadataUpgradeable(stakingToken).balanceOf(address(this))
-        // );
-        // console.log("\nunsatisfiedWithdrawals", unsatisfiedWithdrawals);
-        // console.log("totalRequestedWithdrawals", totalRequestedWithdrawals);
-        uint256 delta = unsatisfiedWithdrawals - totalRequestedWithdrawals;
-        uint256 remainingsToLock = IERC20MetadataUpgradeable(stakingToken)
-            .balanceOf(address(this)) - delta;
-
-        // 3. Lock remaining to frax convex
-        // console.log("\remainingsToLock", remainingsToLock);
-        if (remainingsToLock > 0) {
-            IERC20MetadataUpgradeable(stakingToken).safeIncreaseAllowance(
-                fraxPool,
-                remainingsToLock
-            );
-            IFraxFarmERC20(fraxPool).stakeLocked(remainingsToLock, duration);
-            // console.log("locked to frax");
+    /// @notice Loop called periodically to compound reward tokens into the respective alluo pool
+    /// @dev Claims rewards, transfers all rewards to the alluoPool. Then, the pool is farmed and rewards are credited accordingly per share.
+    function loopRewards() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _relockToFrax();
+        uint256 vaultRewardAfter = IAlluoPool(alluoPool).rewardTokenBalance();
+        uint256 totalRewards = vaultRewardAfter - vaultRewardsBefore;
+        if (totalRewards > 0) {
+            uint256 totalFees = (totalRewards * adminFee) / 10**4;
+            uint256 newRewards = totalRewards - totalFees;
+            rewards[gnosis] += totalFees;
+            rewardsPerShareAccumulated += (newRewards * 10**18) / totalSupply();
         }
+        console.log("Vault reward after", vaultRewardAfter);
+        console.log("Vault rewards before", vaultRewardsBefore);
+        console.log("Total rewards", totalRewards);
     }
 
     /// @notice Unlocks all funds from Frax Convex. Wrapped lp tokens are transfered to the vault.
@@ -623,9 +573,9 @@ contract AlluoConvexVault is
         return
             IERC20MetadataUpgradeable(asset()).balanceOf(address(this)) +
             stakedBalance() +
-            lockedBalance() +
-            totalRequestedWithdrawals -
-            unsatisfiedWithdrawals;
+            lockedBalance() -
+            totalRequestedWithdrawals;
+        // unsatisfiedWithdrawals;
     }
 
     function stakedBalance() public view returns (uint256) {
@@ -634,6 +584,29 @@ contract AlluoConvexVault is
 
     function lockedBalance() public view returns (uint256) {
         return IFraxFarmERC20(fraxPool).lockedLiquidityOf(address(this));
+    }
+
+    function _nonLpMaxDeposit(uint256 assets) internal view returns (uint256) {
+        return
+            totalAssets() - assets > 0 || totalSupply() == 0
+                ? type(uint256).max
+                : 0;
+    }
+
+    function _nonLpPreviewDeposit(uint256 assets)
+        internal
+        view
+        returns (uint256)
+    {
+        uint256 supply = totalSupply();
+        return
+            (assets == 0 || supply == 0)
+                ? assets
+                : assets.mulDiv(
+                    supply,
+                    totalAssets() - assets,
+                    MathUpgradeable.Rounding.Down
+                );
     }
 
     function _beforeTokenTransfer(
