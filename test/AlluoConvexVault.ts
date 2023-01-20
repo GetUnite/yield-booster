@@ -126,26 +126,17 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
         expect(await AlluoVault.totalSupply()).equal(await AlluoVault.totalAssets());
     });
 
-    it.only("Deposit some LP without immediate locking into frax convex", async function () {
-
-        const lpBalance = await ethFrxEthLp.balanceOf(signers[0].address);
-        console.log("LP balance before depositing should be >0:", lpBalance)
-        await ethFrxEthLp.approve(AlluoVault.address, lpBalance);
-        await AlluoVault["deposit(uint256)"](lpBalance);
-        console.log("Shares after should be >0:", await AlluoVault.balanceOf(signers[0].address));
-        console.log('LP of signer after should be zero:', await ethFrxEthLp.balanceOf(signers[0].address));
-        expect(Number(await AlluoVault.balanceOf(signers[0].address))).greaterThan(0);
-        expect(Number(lpBalance)).equal(Number(await AlluoVault.balanceOf(signers[0].address)));
-
-    })
-
-    it.only("Deposit some LP and wait for rewards to accumulate", async function () {
+    it.only("Deposit some LP and wait for Vault rewards to accumulate", async function () {
         const lpBalance = await ethFrxEthLp.balanceOf(signers[0].address);
         console.log("LP balance before", lpBalance)
         await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
         await AlluoVault["deposit(uint256)"](lpBalance);
+        expect(await ethFrxEthLp.balanceOf(AlluoVault.address)).to.be.eq(lpBalance);
         await AlluoVault.stakeUnderlying();
+        expect(await ethFrxEthLp.balanceOf(AlluoVault.address)).to.be.eq(0);
+        expect(await stakingToken.balanceOf(AlluoVault.address)).to.be.eq(0);
         await AlluoVault.loopRewards();
+        expect(await AlluoVault.lockedBalance()).to.be.eq(lpBalance);
         await skipDays(10);
         console.log("Shareholder accumulated", await AlluoVault.shareholderAccruedRewards(signers[0].address));
 
@@ -161,314 +152,97 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
         expect(Number(cvxAccumulated)).greaterThan(0)
         expect(Number(fxsAccumulated)).greaterThan(0)
 
-        // check if fxs rewards are accumulated after withdrawlocked
-
     });
 
-    it.only("Deposit N/2 tokens twice and lockAdditional before the end of cycle. Should have N tokens locked", async function () {
+    it.only("Deposit some LP, claim rewards after farming", async function () {
+
         const lpBalance = await ethFrxEthLp.balanceOf(signers[0].address);
-        console.log("LP balance before", lpBalance)
-        await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
-        await AlluoVault["deposit(uint256)"](lpBalance.div(2));
-        await AlluoVault.stakeUnderlying();
-        await AlluoVault.loopRewards();
-        await skipDays(3);
-        await AlluoVault["deposit(uint256)"](lpBalance.div(2));
-        await AlluoVault.stakeUnderlying();
-        await skipDays(8);
-        await AlluoVault.loopRewards();
-
-        expect(await stakingToken.balanceOf(AlluoVault.address)).to.be.eq(0);
-        expect(await AlluoVault.lockedBalance()).to.be.eq(lpBalance);
-
-    })
-
-    it.only("Deposit N tokens twice, request withdrawal, do one cycle. Should have N locked and N available for withdrawal", async function () {
-        const lpBalance = await ethFrxEthLp.balanceOf(signers[0].address);
-        console.log("LP balance before", lpBalance)
-        await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
-        await AlluoVault["deposit(uint256)"](lpBalance.div(2));
-        await AlluoVault.stakeUnderlying();
-        await AlluoVault.loopRewards();
-        await skipDays(8);
-        expect(await AlluoVault.lockedBalance()).to.be.eq(lpBalance.div(2));
-
-        await AlluoVault.withdraw(lpBalance.div(2), signers[0].address, signers[0].address);
-        await AlluoVault["deposit(uint256)"](lpBalance.div(2));
-        await AlluoVault.loopRewards();
-
-        expect(await ethFrxEthLp.balanceOf(AlluoVault.address)).to.be.eq(lpBalance);
-        expect(await AlluoVault.lockedBalance()).to.be.eq(0);
-
-    })
-
-    it("Deposit N tokens twice, request withdrawal and relock before the end of cycle. Should have 2N locked", async function () {
-        const lpBalance = await ethFrxEthLp.balanceOf(signers[0].address);
-        console.log("LP balance before", lpBalance)
-        await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
-        await AlluoVault["deposit(uint256)"](lpBalance.div(2));
-        await AlluoVault.stakeUnderlying();
-        await AlluoVault.loopRewards();
-        await skipDays(3);
-
-        await AlluoVault.requestWithdrawal(lpBalance.div(2), signers[0].address);
-        await AlluoVault["deposit(uint256)"](lpBalance.div(2));
-        await AlluoVault.stakeUnderlying();
-
-        expect(await stakingToken.balanceOf(AlluoVault.address)).to.be.eq(0);
-        expect(await ethFrxEthLp.balanceOf(AlluoVault.address)).to.be.eq(0);
-        expect(await AlluoVault.lockedBalance()).to.be.eq(lpBalance);
-
-    })
-
-    it("Deposit without LP tokens, withdraw half in non LP. Should have half deposit locked", async function () {
-        const usdcBalance = await usdc.balanceOf(signers[0].address);
-        await usdc.approve(exchange.address, usdcBalance);
-        const lpBalance = await exchange.callStatic.exchange(usdc.address, ethFrxEthLp.address, usdcBalance, 0);
-        console.log("LP balance before", lpBalance)
-        console.log("USDC balance before", usdcBalance)
-        await usdc.approve(AlluoVault.address, usdcBalance);
-        await AlluoVault.depositWithoutLP(usdcBalance, usdc.address);
-        await AlluoVault.stakeUnderlying();
-        await AlluoVault.requestWithdrawal(lpBalance.div(2), signers[0].address);
-
-        await skipDays(9);
-
-        await AlluoVault.stakeUnderlying();
-        await AlluoVault.withdrawToNonLp(lpBalance.div(2), signers[0].address, signers[0].address, usdc.address);
-
-        expect(await stakingToken.balanceOf(AlluoVault.address)).to.be.eq(0);
-        expect(await usdc.balanceOf(signers[0].address)).to.be.gt(0);
-        expect(await AlluoVault.lockedBalance()).to.be.eq(lpBalance.div(2));
-
-    })
-
-    it("Deposit without LP tokens, withdraw half in non LP. Should have half deposit locked", async function () {
-        const usdcBalance = await usdc.balanceOf(signers[0].address);
-        await usdc.approve(exchange.address, usdcBalance);
-        const lpBalance = await exchange.callStatic.exchange(usdc.address, ethFrxEthLp.address, usdcBalance, 0);
-        console.log("LP balance before", lpBalance)
-        console.log("USDC balance before", usdcBalance)
-        await usdc.approve(AlluoVault.address, usdcBalance);
-        await AlluoVault.depositWithoutLP(usdcBalance, usdc.address);
-        await AlluoVault.stakeUnderlying();
-        await AlluoVault.requestWithdrawal(lpBalance.div(2), signers[0].address);
-
-        await skipDays(9);
-
-        await AlluoVault.stakeUnderlying();
-        await AlluoVault.withdrawToNonLp(lpBalance.div(2), signers[0].address, signers[0].address, usdc.address);
-
-        expect(await stakingToken.balanceOf(AlluoVault.address)).to.be.eq(0);
-        expect(await usdc.balanceOf(signers[0].address)).to.be.gt(0);
-        expect(await AlluoVault.lockedBalance()).to.be.eq(lpBalance.div(2));
-
-    })
-
-    it("Deposit N, request withdrawal of N, deposit again N and withdraw N. Should keep remaining N locked", async function () {
-        const lpBalance = await ethFrxEthLp.balanceOf(signers[0].address);
-        console.log("LP balance before", lpBalance)
-        await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
-        await AlluoVault["deposit(uint256)"](lpBalance.div(2));
-        await AlluoVault.stakeUnderlying();
-        await skipDays(8);
-        expect(await AlluoVault.totalAssets()).to.be.eq(lpBalance.div(2));
-
-        await AlluoVault.requestWithdrawal(lpBalance.div(2), signers[0].address);
-        expect(await AlluoVault.totalAssets()).to.be.eq(lpBalance.div(2));
-
-        await AlluoVault["deposit(uint256)"](lpBalance.div(2));
-        await AlluoVault.stakeUnderlying();
-        expect(await AlluoVault.totalAssets()).to.be.eq(lpBalance.div(2));
-
-        const amount = (await AlluoVault.userWithdrawals(signers[0].address)).withdrawalAvailable;
-        await AlluoVault.withdraw(amount, signers[0].address, signers[0].address);
-
-        console.log('alluo balance of assets', await AlluoVault.totalAssets());
-        expect(await stakingToken.balanceOf(AlluoVault.address)).to.be.eq(0);
-        expect(await AlluoVault.lockedBalance()).to.be.eq(lpBalance.div(2));
-        expect(await ethFrxEthLp.balanceOf(signers[0].address)).to.be.eq(amount);
-
-    })
-
-    it("Withdraw from the Vault in non LP", async function () {
-        const lpBalance = await ethFrxEthLp.balanceOf(signers[0].address);
-        console.log("LP balance before", lpBalance)
+        const rewardsBefore = await usdc.balanceOf(signers[0].address);
         await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
         await AlluoVault["deposit(uint256)"](lpBalance);
         await AlluoVault.stakeUnderlying();
-        console.log('locked balance 1', await AlluoVault.lockedBalance());
-        await AlluoVault.requestWithdrawal(lpBalance.div(2), signers[0].address);
-        await skipDays(8);
-        await AlluoVault.stakeUnderlying();
-        console.log('locked balance 2', await AlluoVault.lockedBalance());
-
-        const amount = (await AlluoVault.userWithdrawals(signers[0].address)).withdrawalAvailable;
-        console.log('amount to withdraw', amount);
-        const exitToken = usdc;
-        const exitTokenBalanceBefore = await exitToken.balanceOf(signers[0].address);
-        await AlluoVault.withdrawToNonLp(amount, signers[0].address, signers[0].address, exitToken.address);
-        expect(await stakingToken.balanceOf(AlluoVault.address)).to.be.eq(0);
-        console.log('locked balance 3', await AlluoVault.lockedBalance());
-        expect(await AlluoVault.lockedBalance()).to.be.eq(lpBalance.div(2));
-        const exitTokenBalanceAfter = await exitToken.balanceOf(signers[0].address);
-        expect(exitTokenBalanceAfter).to.be.gt(exitTokenBalanceBefore);
+        await skipDays(10);
+        await alluoPool.connect(admin).farm();
+        await skipDays(10);
+        console.log("Shareholder accumulated", await AlluoVault.shareholderAccruedRewards(signers[0].address));
+        await AlluoVault.claimRewardsInNonLp(usdc.address);
+        const rewardsAfter = await usdc.balanceOf(signers[0].address);
+        expect(rewardsAfter).to.be.gt(rewardsBefore);
+        console.log('Rewards before:', rewardsBefore, 'rewards after:', rewardsAfter);
 
     })
 
-    it("Deposit N tokens twice, request withdrawal of N before the end of cycle. Should revert withdrawal", async function () {
+    it.only("Claim half of deposited amount", async function () {
+        const lpBalance = await ethFrxEthLp.balanceOf(signers[0].address);
+        await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
+        await AlluoVault["deposit(uint256)"](lpBalance.div(2));
+        await AlluoVault.stakeUnderlying(); // locks funds
+        expect(await AlluoVault.lockedBalance()).to.be.eq(lpBalance.div(2));
+        await AlluoVault["deposit(uint256)"](lpBalance.div(2));
+        await AlluoVault.stakeUnderlying();
+        expect(await AlluoVault.lockedBalance()).to.be.eq(lpBalance);
+        await AlluoVault.withdraw(lpBalance.div(2), signers[0].address, signers[0].address);
+        expect(await AlluoVault.balanceOf(signers[0].address)).to.be.eq(lpBalance);
+        await skipDays(8);
+        await AlluoVault.loopRewards();
+
+        expect(await AlluoVault.balanceOf(signers[0].address)).to.be.eq(lpBalance.div(2));
+        expect(await stakingToken.balanceOf(AlluoVault.address)).to.be.eq(lpBalance.div(2));
+        expect(await AlluoVault.lockedBalance()).to.be.eq(lpBalance.div(2));
+
+        const exitTokenBefore = await usdt.balanceOf(signers[0].address);
+        await AlluoVault.claim(usdt.address, signers[0].address);
+        expect(await usdt.balanceOf(signers[0].address)).to.be.gt(exitTokenBefore);
+
+    })
+
+    it("Should claim rewards in non Lps", async function () {
+        const lpBalance = await ethFrxEthLp.balanceOf(signers[0].address);
+        await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
+        await AlluoVault["deposit(uint256)"](lpBalance.div(2));
+        await AlluoVault.stakeUnderlying(); // locks funds
+        await skipDays(8);
+        await AlluoVault.loopRewards();
+
+        const rewardsBefore = await frax.balanceOf(signers[0].address);
+        await AlluoVault.claimRewardsInNonLp(frax.address);
+        const rewardsAfter = await frax.balanceOf(signers[0].address);
+        expect(rewardsAfter).to.be.gt(rewardsBefore);
+    })
+
+    it.only("Should revert an early claim", async function () {
+        const lpBalance = await ethFrxEthLp.balanceOf(signers[0].address);
+        await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
+        await AlluoVault["deposit(uint256)"](lpBalance.div(2));
+        await AlluoVault.stakeUnderlying(); // locks funds
+        await AlluoVault.withdraw(lpBalance.div(2), signers[0].address, signers[0].address);
+        await skipDays(8);
+        expect(AlluoVault.claim(usdt.address, signers[0].address)).to.be.revertedWith("AlluoVault: no withdrawals available");
+
+    })
+
+
+    it("Deposit N tokens twice, do one cycle and request withdrawal of N/2. Should have N/2 locked and N/2 available for withdrawal", async function () {
         const lpBalance = await ethFrxEthLp.balanceOf(signers[0].address);
         console.log("LP balance before", lpBalance)
         await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
         await AlluoVault["deposit(uint256)"](lpBalance.div(2));
         await AlluoVault.stakeUnderlying();
-        await skipDays(3);
+        expect(await AlluoVault.lockedBalance()).to.be.eq(lpBalance.div(2));
+        await skipDays(8);
 
-        await AlluoVault.requestWithdrawal(lpBalance.div(2), signers[0].address);
+        await AlluoVault.withdraw(lpBalance.div(2), signers[0].address, signers[0].address);
         await AlluoVault["deposit(uint256)"](lpBalance.div(2));
-        await skipDays(7);
-        expect(AlluoVault.withdraw(lpBalance.div(2), signers[0].address, signers[0].address)).to.be.revertedWith("AlluoVault: withdraw over balance");
+        await AlluoVault.stakeUnderlying(); // stakes new deposits 
+        await AlluoVault.loopRewards(); // satifsfy withdrawals
 
-        expect(await stakingToken.balanceOf(AlluoVault.address)).to.be.gt(0);
+        expect(await ethFrxEthLp.balanceOf(AlluoVault.address)).to.be.eq(lpBalance.div(2));
         expect(await AlluoVault.lockedBalance()).to.be.eq(lpBalance.div(2));
 
     })
 
-    it("Deposit some Lp for vault tokens and then burn them for the same LPs back.", async function () {
-        const lpBalance = await ethFrxEthLp.balanceOf(signers[0].address);
-        console.log('balance', lpBalance);
-        await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
-        await AlluoVault.deposit(lpBalance, signers[0].address);
 
-        await AlluoVault.stakeUnderlying();
-        await skipDays(1);
-        await alluoPool.connect(admin).farm();
-        await skipDays(1);
-        console.log("Shareholder accumulated", await AlluoVault.shareholderAccruedRewards(signers[0].address));
 
-        await AlluoVault.withdraw(lpBalance, signers[0].address, signers[0].address);
-        await AlluoVault.claimRewards();
-
-        expect(await AlluoVault.balanceOf(signers[0].address)).equal(0)
-        // this must be greater than or equal because the base pool APY is quite high.
-        console.log('LP tokens after withdrawal', await ethFrxEthLp.balanceOf(signers[0].address));
-        expect(Number(await ethFrxEthLp.balanceOf(signers[0].address))).greaterThanOrEqual(Number(lpBalance))
-        console.log("Rewards in LP", Number(await rewardToken.balanceOf(signers[0].address)));
-        expect(Number(await rewardToken.balanceOf(signers[0].address))).greaterThan(0)
-        expect(Number(await AlluoVault.totalAssets())).equal(0)
-        expect(Number(await AlluoVault.totalSupply())).equal(0)
-    })
-
-    it("After looping rewards, expect fundsLocked to increase.", async function () {
-
-        const lpBalance = await ethFrxEthLp.balanceOf(signers[0].address);
-        await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
-        await AlluoVault.deposit(lpBalance, signers[0].address);
-        await AlluoVault.stakeUnderlying();
-        await skipDays(0.1);
-        await alluoPool.connect(admin).farm();
-
-        const initialRewards = await alluoPool.fundsLocked();
-        console.log('LPs staked before', initialRewards);
-
-        await skipDays(10);
-        await alluoPool.claimRewardsFromPool();
-
-        const crvAccumulated = await crv.balanceOf(alluoPool.address);
-        const cvxAccumulated = await cvx.balanceOf(alluoPool.address);
-        console.log(crvAccumulated)
-        console.log(cvxAccumulated)
-
-        await alluoPool.connect(admin).farm();
-
-        const compoundedRewards = await alluoPool.fundsLocked();
-        console.log("LPs staked after", compoundedRewards);
-        expect(Number(compoundedRewards)).greaterThan(Number(initialRewards));
-    })
-
-    it("Deposit frax to enter pool.", async function () {
-
-        const fraxBalance = parseEther("100");
-        await frax.approve(AlluoVault.address, ethers.constants.MaxUint256);
-        await AlluoVault.depositWithoutLP(fraxBalance, frax.address);
-        await AlluoVault.stakeUnderlying();
-        await skipDays(1);
-        console.log("Shareholder accumulated", await AlluoVault.shareholderAccruedRewards(signers[0].address));
-
-        await AlluoVault.claimRewardsFromPool();
-
-        const crvAccumulated = await crv.balanceOf(AlluoVault.address);
-        const cvxAccumulated = await cvx.balanceOf(AlluoVault.address);
-        expect(Number(crvAccumulated)).greaterThan(0)
-        expect(Number(cvxAccumulated)).greaterThan(0)
-    })
-
-    it("Deposit usdc to enter pool.", async function () {
-        const usdcBalance = await usdc.balanceOf(signers[0].address);
-        await usdc.approve(AlluoVault.address, usdcBalance);
-
-        const crvBefore = await crv.balanceOf(AlluoVault.address);
-        const cvxBefore = await cvx.balanceOf(AlluoVault.address);
-
-        await AlluoVault.depositWithoutLP(usdcBalance, usdc.address);
-        expect(usdcBalance).to.be.gt(await usdc.balanceOf(signers[0].address));
-        await AlluoVault.stakeUnderlying();
-        await skipDays(10);
-        await AlluoVault.claimRewardsFromPool();
-
-        const crvAccumulated = await crv.balanceOf(AlluoVault.address);
-        const cvxAccumulated = await cvx.balanceOf(AlluoVault.address);
-        expect(Number(crvAccumulated)).greaterThan(Number(crvBefore));
-        expect(Number(cvxAccumulated)).greaterThan(Number(cvxBefore));
-    })
-
-    it("Deposit usdt to enter pool (non pool token).", async function () {
-
-        const usdtBalance = parseUnits("100", 6);
-        const crvBefore = await crv.balanceOf(AlluoVault.address);
-        const cvxBefore = await cvx.balanceOf(AlluoVault.address);
-        await usdt.approve(AlluoVault.address, ethers.constants.MaxUint256);
-        await AlluoVault.depositWithoutLP(usdtBalance, usdt.address);
-        expect(await usdt.balanceOf(signers[0].address)).to.be.gt(usdtBalance);
-        await AlluoVault.stakeUnderlying();
-        await skipDays(10);
-        await AlluoVault.claimRewardsFromPool();
-
-        const crvAccumulated = await crv.balanceOf(AlluoVault.address);
-        const cvxAccumulated = await cvx.balanceOf(AlluoVault.address);
-        expect(Number(crvAccumulated)).greaterThan(Number(crvBefore));
-        expect(Number(cvxAccumulated)).greaterThan(Number(cvxBefore));
-    })
-
-    it("Deposit usdc to enter pool and exit again in USDC", async function () {
-
-        const usdcBalance = parseUnits("100", 6);
-        await usdc.approve(AlluoVault.address, ethers.constants.MaxUint256);
-        await AlluoVault.depositWithoutLP(usdcBalance, usdc.address);
-        expect(await usdc.balanceOf(signers[0].address)).to.be.gt(usdcBalance);
-        await AlluoVault.stakeUnderlying();
-        await skipDays(10);
-        await AlluoVault.claimRewardsFromPool();
-
-        const lpBalance = await AlluoVault.balanceOf(signers[0].address);
-        await AlluoVault.withdrawToNonLp(lpBalance, signers[0].address, signers[0].address, usdc.address)
-        expect(await AlluoVault.balanceOf(signers[0].address)).to.be.eq(0);
-
-    })
-
-    it("Deposit usdt to enter pool (non pool token) and exit again in a non pool token.", async function () {
-        const usdtBalance = parseUnits("100", 6);
-        await usdt.approve(AlluoVault.address, ethers.constants.MaxUint256);
-        await AlluoVault.depositWithoutLP(usdtBalance, usdt.address);
-        const usdtBefore = await usdt.balanceOf(signers[0].address);
-        await AlluoVault.stakeUnderlying();
-        await skipDays(10);
-        await AlluoVault.claimRewardsFromPool();
-        const lpBalance = await AlluoVault.balanceOf(signers[0].address);
-        await AlluoVault.withdrawToNonLp(lpBalance, signers[0].address, signers[0].address, usdt.address)
-        expect(await usdt.balanceOf(signers[0].address)).to.be.gt(usdtBefore);
-
-    })
 
     it("Multiple deposits and withdrawals should return correct LP amounts", async function () {
         let signerBalancesBefore = []
