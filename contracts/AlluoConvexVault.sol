@@ -425,10 +425,12 @@ contract AlluoConvexVault is
     function claimRewardsInNonLp(address exitToken) public returns (uint256) {
         _distributeReward(_msgSender());
         uint256 rewardTokens = rewards[_msgSender()];
+        console.log("AGA!", rewardTokens);
         if (rewardTokens > 0) {
             rewards[_msgSender()] = 0;
             // Disable for Sepolia
             IAlluoPool(alluoPool).withdraw(rewardTokens);
+            console.log("ot stilki vyvodym", rewardTokens);
             rewardToken.safeIncreaseAllowance(address(EXCHANGE), rewardTokens);
             rewardTokens = EXCHANGE.exchange(
                 address(rewardToken),
@@ -436,6 +438,7 @@ contract AlluoConvexVault is
                 rewardTokens,
                 0
             );
+            console.log(exitToken);
             IERC20MetadataUpgradeable(exitToken).safeTransfer(
                 _msgSender(),
                 rewardTokens
@@ -461,14 +464,18 @@ contract AlluoConvexVault is
         uint256 assets = IERC20MetadataUpgradeable(asset()).balanceOf(
             address(this)
         );
+        // console.log("User lp dep", assets);
         if (assets > 0) {
             _wrapLP(assets);
         }
+        console.log("wrap", assets);
 
         // 2. Lock additional
         uint256 wrappedBalance = IConvexWrapper(stakingToken).balanceOf(
             address(this)
         );
+        console.log("wrap", wrappedBalance);
+        // console.log("wrapped balance", wrappedBalance);
         if (wrappedBalance > 0) {
             IFraxFarmERC20.LockedStake[] memory lockedstakes = IFraxFarmERC20(
                 fraxPool
@@ -483,8 +490,10 @@ contract AlluoConvexVault is
                     lockedstakes[0].kek_id,
                     wrappedBalance
                 );
+                // console.log("locked");
             } else if (lockedstakes.length == 0) {
                 IFraxFarmERC20(fraxPool).stakeLocked(wrappedBalance, duration);
+                // console.log("ne locked");
             }
         }
     }
@@ -521,13 +530,17 @@ contract AlluoConvexVault is
 
         if (lockedstakes.length == 1) {
             if (lockedstakes[0].ending_timestamp < block.timestamp) {
+                console.log("lock zakinchuetsa", lockedstakes[0].ending_timestamp);
                 IFraxFarmERC20(fraxPool).withdrawLocked(
                     lockedstakes[0].kek_id,
                     address(this)
                 ); // claims rewards from frax
 
+                IFraxFarmERC20(fraxPool).getReward(address(this));
+
                 // 2. Updates userWithdrawals mapping, burns shares of those in the queue and clears withdrawal queue
                 uint256 newUnsatisfiedWithdrawals = _processWithdrawalRequests();
+                console.log("Unsatisfied", newUnsatisfiedWithdrawals);
 
                 // 3. Lock remaining to frax convex
                 uint256 remainingsToLock = IERC20MetadataUpgradeable(
@@ -557,9 +570,9 @@ contract AlluoConvexVault is
             rewards[gnosis] += totalFees;
             rewardsPerShareAccumulated += (newRewards * 10**18) / totalSupply();
         }
-        console.log("Vault reward after", vaultRewardAfter);
-        console.log("Vault rewards before", vaultRewardsBefore);
-        console.log("Total rewards", totalRewards);
+        console.log("Swang afric", vaultRewardAfter);
+        console.log("Bershka", vaultRewardsBefore);
+        console.log("Toman", totalRewards);
     }
 
     /// @notice Unlocks all funds from Frax Convex. Wrapped lp tokens are transfered to the vault.
