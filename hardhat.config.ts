@@ -18,18 +18,18 @@ const config: HardhatUserConfig = {
     settings: {
       optimizer: {
         enabled: true,
-        runs: 200,
-        details: { yul: false },
+        runs: 0,
+        // details: { yul: false },
       },
     },
   },
   networks: {
     hardhat: {
-      // forking: {
-      //   enabled: process.env.FORKING_ENABLED == "true",
-      //   url: process.env.MAINNET_FORKING_URL as string,
-      //   blockNumber: 14785940
-      // }
+      forking: {
+        enabled: process.env.FORKING_ENABLED == "true",
+        url: process.env.MAINNET_FORKING_URL as string,
+        blockNumber: 16428096
+      }
     },
     mainnet: {
       url: process.env.MAINNET_URL,

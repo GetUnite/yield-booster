@@ -165,7 +165,7 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
         await alluoPool.connect(admin).farm();
         await skipDays(10);
         console.log("Shareholder accumulated", await AlluoVault.shareholderAccruedRewards(signers[0].address));
-        await AlluoVault.claimRewardsInNonLp(usdc.address);
+        await AlluoVault.claimRewards(usdc.address);
         const rewardsAfter = await usdc.balanceOf(signers[0].address);
         expect(rewardsAfter).to.be.gt(rewardsBefore);
         console.log('Rewards before:', rewardsBefore, 'rewards after:', rewardsAfter);
@@ -215,7 +215,7 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
         await AlluoVault.loopRewards();
 
         const rewardsBefore = await frax.balanceOf(signers[0].address);
-        await AlluoVault.claimRewardsInNonLp(frax.address);
+        await AlluoVault.claimRewards(frax.address);
         const rewardsAfter = await frax.balanceOf(signers[0].address);
         expect(rewardsAfter).to.be.gt(rewardsBefore);
     })
@@ -285,7 +285,7 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
         for (let i = 1; i < 4; i++) {
             await AlluoVault.connect(signers[i]).claim(exitToken.address, signers[i].address);
             expect(signerExitTokenBefore[i]).to.be.lt(await exitToken.balanceOf(signers[i].address));
-            await AlluoVault.connect(signers[i]).claimRewards();
+            await AlluoVault.connect(signers[i]).claimRewards(rewardToken.address);
             expect(signerRewardTokenBefore[i]).to.be.lt(await rewardToken.balanceOf(signers[i].address));
             console.log(`Reward balance of signer ${i} is ${await rewardToken.balanceOf(signers[i].address)}`);
         }
@@ -313,11 +313,11 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
         await alluoPool.connect(admin).farm();
 
         await skipDays(10);
-        await AlluoVault.connect(signers[1]).claimRewards();
+        await AlluoVault.connect(signers[1]).claimRewards(rewardToken.address);
         let expectBalance = await rewardToken.balanceOf(signers[1].address)
 
         for (let i = 2; i < 6; i++) {
-            await AlluoVault.connect(signers[xi]).claimRewards();
+            await AlluoVault.connect(signers[i]).claimRewards(rewardToken.address);
             // Small dust
             expect(Number(await rewardToken.balanceOf(signers[i].address)).toPrecision(2)).equal(Number(expectBalance).toPrecision(2))
             console.log(`Reward tokens for signer ${i}: ${await rewardToken.balanceOf(signers[i].address)}`)
@@ -342,13 +342,13 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
         await alluoPool.connect(admin).farm();
 
         await skipDays(10);
-        await AlluoVault.connect(signers[1]).claimRewards();
+        await AlluoVault.connect(signers[1]).claimRewards(rewardToken.address);
         await AlluoVault.connect(signers[1]).withdrawToNonLp(await AlluoVault.balanceOf(signers[1].address), signers[1].address, signers[1].address, frax.address);
         expect(await AlluoVault.balanceOf(signers[1].address)).equal(0);
 
         let expectBalance = await rewardToken.balanceOf(signers[1].address)
         for (let i = 2; i < 6; i++) {
-            await AlluoVault.connect(signers[i]).claimRewards();
+            await AlluoVault.connect(signers[i]).claimRewards(rewardToken.address);
             await AlluoVault.connect(signers[i]).withdrawToNonLp(await AlluoVault.balanceOf(signers[i].address), signers[i].address, signers[i].address, frax.address);
             // Small dust
             expect(Number(await rewardToken.balanceOf(signers[i].address)).toPrecision(2)).equal(Number(expectBalance).toPrecision(2))
