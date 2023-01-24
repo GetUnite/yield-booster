@@ -15,6 +15,8 @@ import "./interfaces/IConvexWrapper.sol";
 import "./interfaces/IFraxFarmERC20.sol";
 import "./interfaces/IAlluoPool.sol";
 
+import "hardhat/console.sol";
+
 contract AlluoConvexVault is
     Initializable,
     PausableUpgradeable,
@@ -383,6 +385,7 @@ contract AlluoConvexVault is
     {
         _distributeReward(_msgSender());
         rewardTokens = rewards[_msgSender()];
+        console.log("rewardTokens", rewardTokens);
         if (rewardTokens > 0) {
             rewards[_msgSender()] = 0;
             IAlluoPool(alluoPool).withdraw(rewardTokens);
@@ -422,7 +425,7 @@ contract AlluoConvexVault is
         // 2. Lock additional
         uint256 wrappedBalance = IConvexWrapper(stakingToken).balanceOf(
             address(this)
-        );
+        ) - totalRequestedWithdrawals;
         if (wrappedBalance > 0) {
             IFraxFarmERC20.LockedStake[] memory lockedstakes = IFraxFarmERC20(
                 fraxPool
@@ -446,14 +449,12 @@ contract AlluoConvexVault is
     /// @notice Burns share of users in the withdrawal queue
     /// @dev Internal function to be called only when funds are unlocked from Frax
     function _processWithdrawalRequests() internal returns (uint256) {
-        // uint256 totalNumberOfWithdrawals = withdrawalqueue.length;
         uint256 newUnsatisfiedWithdrawals;
         if (withdrawalqueue.length != 0) {
             for (uint256 i = withdrawalqueue.length; i > 0; i--) {
                 uint256 requestedAmount = userWithdrawals[
                     withdrawalqueue[i - 1]
                 ].withdrawalRequested;
-                // uint256 shares = previewWithdraw(requestedAmount);
                 _burn(withdrawalqueue[i - 1], previewWithdraw(requestedAmount));
                 newUnsatisfiedWithdrawals += requestedAmount; // to calculate remainings to lock
                 totalRequestedWithdrawals += requestedAmount; // to balance out totalAssets()
@@ -504,7 +505,6 @@ contract AlluoConvexVault is
     /// @notice Loop called periodically to compound reward tokens into the respective alluo pool
     /// @dev Claims rewards, transfers all rewards to the alluoPool. Then, the pool is farmed and rewards are credited accordingly per share.
     function loopRewards() external onlyRole(DEFAULT_ADMIN_ROLE) {
-        _relockToFrax();
         uint256 totalRewards = IAlluoPool(alluoPool).rewardTokenBalance() -
             vaultRewardsBefore;
         if (totalRewards > 0) {
@@ -513,6 +513,7 @@ contract AlluoConvexVault is
             rewards[gnosis] += totalFees;
             rewardsPerShareAccumulated += (newRewards * 10**18) / totalSupply();
         }
+        _relockToFrax();
     }
 
     /// @notice Unlocks all funds from Frax Convex. Wrapped lp tokens are transfered to the vault.
@@ -520,7 +521,10 @@ contract AlluoConvexVault is
         IFraxFarmERC20.LockedStake[] memory lockedstakes = IFraxFarmERC20(
             fraxPool
         ).lockedStakesOf(address(this));
-        if (lockedstakes.length == 1) {
+        if (
+            lockedstakes.length == 1 &&
+            lockedstakes[0].ending_timestamp <= block.timestamp
+        ) {
             bytes32 kek_id = lockedstakes[0].kek_id;
             IFraxFarmERC20(fraxPool).withdrawLocked(kek_id, address(this));
         } else return;
@@ -572,30 +576,28 @@ contract AlluoConvexVault is
     ) internal virtual override {
         _distributeReward(from);
         _distributeReward(to);
+        if (
+            userWithdrawals[from].withdrawalRequested != 0 && to != address(0)
+        ) {
+            userWithdrawals[to].withdrawalRequested += userWithdrawals[from]
+                .withdrawalRequested;
+            // remove old owner from withdrawalqueue
+            uint256 ownerId = userWithdrawals[from].id;
+            // console.log("owner id", ownerId);
+            // console.log(withdrawalqueue.length - 1);
+            withdrawalqueue[ownerId - 1] = withdrawalqueue[
+                withdrawalqueue.length - 1
+            ];
+            userWithdrawals[withdrawalqueue[ownerId - 1]].id = ownerId;
+            withdrawalqueue.pop();
 
-        {
-            if (
-                userWithdrawals[from].withdrawalRequested != 0 &&
-                to != address(0)
-            ) {
-                userWithdrawals[to].withdrawalRequested += userWithdrawals[from]
-                    .withdrawalRequested;
-                // remove old owner from withdrawalqueue
-                uint256 ownerId = userWithdrawals[from].id;
-                withdrawalqueue[ownerId] = withdrawalqueue[
-                    withdrawalqueue.length - 1
-                ];
-                withdrawalqueue.pop();
-                userWithdrawals[withdrawalqueue[ownerId]].id = ownerId;
-
-                // add new owner to withdrawalqueue if they are not there already
-                if (userWithdrawals[to].id == 0) {
-                    withdrawalqueue.push(to);
-                    userWithdrawals[to].id = withdrawalqueue.length;
-                }
-
-                delete userWithdrawals[from];
+            // add new owner to withdrawal queue if they are not there already
+            if (userWithdrawals[to].id == 0) {
+                withdrawalqueue.push(to);
+                userWithdrawals[to].id = withdrawalqueue.length;
             }
+
+            delete userWithdrawals[from];
         }
         super._beforeTokenTransfer(from, to, amount);
     }
