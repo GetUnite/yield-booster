@@ -385,7 +385,6 @@ contract AlluoConvexVault is
     {
         _distributeReward(_msgSender());
         rewardTokens = rewards[_msgSender()];
-        console.log("rewardTokens", rewardTokens);
         if (rewardTokens > 0) {
             rewards[_msgSender()] = 0;
             IAlluoPool(alluoPool).withdraw(rewardTokens);
@@ -514,6 +513,13 @@ contract AlluoConvexVault is
             rewardsPerShareAccumulated += (newRewards * 10**18) / totalSupply();
         }
         _relockToFrax();
+
+        console.log(
+            "Vault reward after",
+            IAlluoPool(alluoPool).rewardTokenBalance()
+        );
+        console.log("Frax Vault rewards before", vaultRewardsBefore);
+        console.log("Frax Total rewards", totalRewards);
     }
 
     /// @notice Unlocks all funds from Frax Convex. Wrapped lp tokens are transfered to the vault.
@@ -583,8 +589,6 @@ contract AlluoConvexVault is
                 .withdrawalRequested;
             // remove old owner from withdrawalqueue
             uint256 ownerId = userWithdrawals[from].id;
-            // console.log("owner id", ownerId);
-            // console.log(withdrawalqueue.length - 1);
             withdrawalqueue[ownerId - 1] = withdrawalqueue[
                 withdrawalqueue.length - 1
             ];

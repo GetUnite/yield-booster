@@ -107,19 +107,19 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
             kind: 'uups'
         }) as AlluoConvexVault;
 
-        let PoolVaultFactory = await ethers.getContractFactory("AlluoVaultPool");
-        alluoPool = await upgrades.deployProxy(PoolVaultFactory, [
-            rewardToken.address,
-            gnosis,
-            [crv.address, cvx.address],
-            [AlluoVault.address],
-            "0xB576491F1E6e5E62f1d8F26062Ee822B40B0E0d4", // Pool address
-            64, //Pool number convex
-            cvx.address
-        ]) as AlluoVaultPool;
+        // let PoolVaultFactory = await ethers.getContractFactory("AlluoVaultPool");
+        // alluoPool = await upgrades.deployProxy(PoolVaultFactory, [
+        //     rewardToken.address,
+        //     gnosis,
+        //     [crv.address, cvx.address],
+        //     [AlluoVault.address],
+        //     "0xB576491F1E6e5E62f1d8F26062Ee822B40B0E0d4", // Pool address
+        //     64, //Pool number convex
+        //     cvx.address
+        // ]) as AlluoVaultPool;
 
-        // alluoPool = await ethers.getContractAt("AlluoVaultPool", "0x470e486acA0e215C925ddcc3A9D446735AabB714");
-        // await alluoPool.connect(admin).editVault(true, AlluoVault.address);
+        alluoPool = await ethers.getContractAt("AlluoVaultPool", "0x470e486acA0e215C925ddcc3A9D446735AabB714");
+        await alluoPool.connect(admin).editVault(true, AlluoVault.address);
 
         await AlluoVault.setPool(alluoPool.address);
         await AlluoVault.grantRole("0x0000000000000000000000000000000000000000000000000000000000000000", alluoPool.address)
@@ -184,6 +184,17 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
         await AlluoVault.depositWithoutLP(usdcBalance, usdc.address);
         await AlluoVault.stakeUnderlying();
         expect(await AlluoVault.balanceOf(signers[0].address)).to.be.gt(0);
+
+    })
+
+    it("Should revert depositing non LP tokens", async function () {
+
+        const usdcBalance = await usdc.balanceOf(signers[0].address);
+        expect(Number(usdcBalance) > 0);
+        await usdc.approve(AlluoVault.address, usdcBalance);
+        await AlluoVault.depositWithoutLP(usdcBalance.div(4), usdc.address);
+        await AlluoVault.stakeUnderlying();
+        expect(AlluoVault.depositWithoutLP(usdcBalance.div(2), usdc.address)).to.be.revertedWith("ERC4626: deposit>max");
 
     })
 
@@ -292,10 +303,22 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
         await AlluoVault.stakeUnderlying();
         await AlluoVault.withdraw(lpBalance.div(2), signers[0].address, signers[0].address);
         await skipDays(8);
-        await alluoPool.farm();
+        await alluoPool.connect(admin).farm();
         expect(await AlluoVault.lockedBalance()).to.be.eq(0);
         await AlluoVault.stakeUnderlying();
         expect(await AlluoVault.lockedBalance()).to.be.eq(0);
+
+    })
+
+    it("Check if second staking is to the same kek id", async function () {
+        const lpBalance = await ethFrxEthLp.balanceOf(signers[0].address);
+        await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
+        await AlluoVault["deposit(uint256)"](lpBalance.div(2));
+        await AlluoVault.stakeUnderlying();
+        await AlluoVault["deposit(uint256)"](lpBalance.div(2));
+        await AlluoVault.stakeUnderlying();
+        expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(1);
+        expect(await AlluoVault.lockedBalance()).to.be.eq(lpBalance);
 
     })
 
@@ -341,7 +364,6 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
         await skipDays(10);
         await alluoPool.connect(admin).farm();
         await skipDays(10);
-        // await alluoPool.connect(admin).farm();
 
         for (let i = 1; i < 4; i++) {
             await AlluoVault.connect(signers[i]).claim(exitToken.address, signers[i].address);
@@ -558,7 +580,6 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
         await AlluoVault.stakeUnderlying();
         await skipDays(10);
         await alluoPool.connect(admin).farm();
-        // await alluoPool.connect(mul)
         multisigRewards.push()
         await skipDays(10);
         await alluoPool.connect(admin).farm();
@@ -581,6 +602,28 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
         await skipDays(14);
         await AlluoVault.connect(admin).unlockFromFraxConvex();
         expect(await AlluoVault.lockedBalance()).to.be.eq(0);
+    })
+
+    it("Should mint shares and allow to withdraw", async function () {
+        const lpBalance = await ethFrxEthLp.balanceOf(signers[0].address);
+        await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
+        await AlluoVault.mint(lpBalance.div(2), signers[0].address);
+        await AlluoVault.stakeUnderlying();
+        expect(await AlluoVault.balanceOf(signers[0].address)).to.be.eq(lpBalance.div(2));
+        expect(await AlluoVault.lockedBalance()).to.be.eq(lpBalance.div(2));
+        await skipDays(14);
+        await AlluoVault.withdraw(lpBalance.div(2), signers[0].address, signers[0].address);
+        await alluoPool.connect(admin).farm();
+        await AlluoVault.claim(ethFrxEthLp.address, signers[0].address);
+        expect(await ethFrxEthLp.balanceOf(signers[0].address)).to.be.eq(lpBalance);
+    })
+
+    it("Should revert minting", async function () {
+
+        const lpBalance = await ethFrxEthLp.balanceOf(signers[0].address);
+        await ethFrxEthLp.approve(AlluoVault.address, lpBalance);
+        await AlluoVault.mint(lpBalance.div(4), signers[0].address);
+        expect(AlluoVault.mint(lpBalance.div(2), signers[0].address)).to.be.revertedWith("ERC4626: mint>max");
     })
 });
 
