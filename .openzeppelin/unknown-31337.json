@@ -768,17 +768,17 @@
     },
     {
       "address": "0x74Df809b1dfC099E8cdBc98f6a8D1F5c2C3f66f8",
-      "txHash": "0xdc9985bc9a0f040b7b3c6a5bdc9fbb973a8d488b8cb99550f335143bcc357bbe",
-      "kind": "uups"
-    },
-    {
-      "address": "0xd038A2EE73b64F30d65802Ad188F27921656f28F",
-      "txHash": "0xbad01d8d7d9a253efa15de8bcb33010e48314d4872058f2cc2732d3d2c186a78",
+      "txHash": "0x386729e5af351b24f5a5b596bfb60a8c3b906cd2e78d6f584d78bc6b8cc5c927",
       "kind": "uups"
     },
     {
       "address": "0xeC1BB74f5799811c0c1Bff94Ef76Fb40abccbE4a",
-      "txHash": "0x49ce531510060e8288ddc1203bd9281f12454b72d65869e3d6c0939a4951cb11",
+      "txHash": "0xe73f6b16c193841ba428d461642ad4514483a410e483a0367338aa589f1735a3",
+      "kind": "uups"
+    },
+    {
+      "address": "0xd038A2EE73b64F30d65802Ad188F27921656f28F",
+      "txHash": "0x128565101801bccb7915eb1a4e8d1f1a5f8c0861ca4e02315757a9662f067678",
       "kind": "uups"
     }
   ],
@@ -2053,9 +2053,273 @@
         }
       }
     },
-    "44e31aeab583e238e57f8b63fe6acd398211d942fe22e2a33e6deb5849d9c793": {
+    "ac155db8b42353356c76521e661b1da04fd8492035886b2e7e4d7d1f1f23d6de": {
       "address": "0x666432Ccb747B2220875cE185f487Ed53677faC9",
-      "txHash": "0xb406395ceebcf8a448fc8db59d08ea0791a5f4f4f9be5e184e3a39159b6d64ee",
+      "txHash": "0xa2620d5ea6256d5c0e787debb4db70af01f99b838aa4fe59d9e0ec9823178105",
+      "layout": {
+        "solcVersion": "0.8.11",
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:62",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:67"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:36"
+          },
+          {
+            "label": "_paused",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_bool",
+            "contract": "PausableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol:29"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "52",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "PausableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol:116"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ERC165Upgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol:41"
+          },
+          {
+            "label": "_roles",
+            "offset": 0,
+            "slot": "151",
+            "type": "t_mapping(t_bytes32,t_struct(RoleData)34_storage)",
+            "contract": "AccessControlUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol:61"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "152",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "AccessControlUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol:259"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "201",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ERC1967UpgradeUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/ERC1967/ERC1967UpgradeUpgradeable.sol:211"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "251",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "UUPSUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol:107"
+          },
+          {
+            "label": "balances",
+            "offset": 0,
+            "slot": "301",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "AlluoVaultPool",
+            "src": "contracts/AlluoVaultPool.sol:36"
+          },
+          {
+            "label": "totalBalances",
+            "offset": 0,
+            "slot": "302",
+            "type": "t_uint256",
+            "contract": "AlluoVaultPool",
+            "src": "contracts/AlluoVaultPool.sol:37"
+          },
+          {
+            "label": "upgradeStatus",
+            "offset": 0,
+            "slot": "303",
+            "type": "t_bool",
+            "contract": "AlluoVaultPool",
+            "src": "contracts/AlluoVaultPool.sol:42"
+          },
+          {
+            "label": "rewardToken",
+            "offset": 1,
+            "slot": "303",
+            "type": "t_contract(IERC20MetadataUpgradeable)1332",
+            "contract": "AlluoVaultPool",
+            "src": "contracts/AlluoVaultPool.sol:44"
+          },
+          {
+            "label": "entryToken",
+            "offset": 0,
+            "slot": "304",
+            "type": "t_contract(IERC20MetadataUpgradeable)1332",
+            "contract": "AlluoVaultPool",
+            "src": "contracts/AlluoVaultPool.sol:45"
+          },
+          {
+            "label": "yieldTokens",
+            "offset": 0,
+            "slot": "305",
+            "type": "t_struct(AddressSet)3457_storage",
+            "contract": "AlluoVaultPool",
+            "src": "contracts/AlluoVaultPool.sol:46"
+          },
+          {
+            "label": "vaults",
+            "offset": 0,
+            "slot": "307",
+            "type": "t_struct(AddressSet)3457_storage",
+            "contract": "AlluoVaultPool",
+            "src": "contracts/AlluoVaultPool.sol:47"
+          },
+          {
+            "label": "curvePool",
+            "offset": 0,
+            "slot": "309",
+            "type": "t_address",
+            "contract": "AlluoVaultPool",
+            "src": "contracts/AlluoVaultPool.sol:49"
+          },
+          {
+            "label": "poolId",
+            "offset": 0,
+            "slot": "310",
+            "type": "t_uint256",
+            "contract": "AlluoVaultPool",
+            "src": "contracts/AlluoVaultPool.sol:50"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_bytes32)dyn_storage": {
+            "label": "bytes32[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_contract(IERC20MetadataUpgradeable)1332": {
+            "label": "contract IERC20MetadataUpgradeable",
+            "numberOfBytes": "20"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_struct(RoleData)34_storage)": {
+            "label": "mapping(bytes32 => struct AccessControlUpgradeable.RoleData)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_uint256)": {
+            "label": "mapping(bytes32 => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_struct(AddressSet)3457_storage": {
+            "label": "struct EnumerableSetUpgradeable.AddressSet",
+            "members": [
+              {
+                "label": "_inner",
+                "type": "t_struct(Set)3142_storage",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_struct(RoleData)34_storage": {
+            "label": "struct AccessControlUpgradeable.RoleData",
+            "members": [
+              {
+                "label": "members",
+                "type": "t_mapping(t_address,t_bool)",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "adminRole",
+                "type": "t_bytes32",
+                "offset": 0,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_struct(Set)3142_storage": {
+            "label": "struct EnumerableSetUpgradeable.Set",
+            "members": [
+              {
+                "label": "_values",
+                "type": "t_array(t_bytes32)dyn_storage",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_indexes",
+                "type": "t_mapping(t_bytes32,t_uint256)",
+                "offset": 0,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        }
+      }
+    },
+    "de972bd2626708ee219a86d5ae37815bb0d05f2ba829975610d47da1a9aecb41": {
+      "address": "0x01cf58e264d7578D4C67022c58A24CbC4C4a304E",
+      "txHash": "0xf2e78888ac99e498bc1c301dedd9d35636970f8e1094abfd5575ed3047b27e9b",
       "layout": {
         "solcVersion": "0.8.11",
         "storage": [
@@ -2218,7 +2482,7 @@
             "slot": "401",
             "type": "t_mapping(t_address,t_uint256)",
             "contract": "AlluoConvexVault",
-            "src": "contracts/AlluoConvexVault.sol:50"
+            "src": "contracts/AlluoConvexVault.sol:47"
           },
           {
             "label": "rewards",
@@ -2226,15 +2490,15 @@
             "slot": "402",
             "type": "t_mapping(t_address,t_uint256)",
             "contract": "AlluoConvexVault",
-            "src": "contracts/AlluoConvexVault.sol:51"
+            "src": "contracts/AlluoConvexVault.sol:48"
           },
           {
             "label": "userWithdrawals",
             "offset": 0,
             "slot": "403",
-            "type": "t_mapping(t_address,t_struct(Shareholder)5365_storage)",
+            "type": "t_mapping(t_address,t_struct(Shareholder)5358_storage)",
             "contract": "AlluoConvexVault",
-            "src": "contracts/AlluoConvexVault.sol:52"
+            "src": "contracts/AlluoConvexVault.sol:49"
           },
           {
             "label": "withdrawalqueue",
@@ -2242,7 +2506,7 @@
             "slot": "404",
             "type": "t_array(t_address)dyn_storage",
             "contract": "AlluoConvexVault",
-            "src": "contracts/AlluoConvexVault.sol:53"
+            "src": "contracts/AlluoConvexVault.sol:50"
           },
           {
             "label": "trustedForwarder",
@@ -2250,7 +2514,7 @@
             "slot": "405",
             "type": "t_address",
             "contract": "AlluoConvexVault",
-            "src": "contracts/AlluoConvexVault.sol:55"
+            "src": "contracts/AlluoConvexVault.sol:52"
           },
           {
             "label": "alluoPool",
@@ -2258,7 +2522,7 @@
             "slot": "406",
             "type": "t_address",
             "contract": "AlluoConvexVault",
-            "src": "contracts/AlluoConvexVault.sol:56"
+            "src": "contracts/AlluoConvexVault.sol:53"
           },
           {
             "label": "fraxPool",
@@ -2266,7 +2530,7 @@
             "slot": "407",
             "type": "t_address",
             "contract": "AlluoConvexVault",
-            "src": "contracts/AlluoConvexVault.sol:57"
+            "src": "contracts/AlluoConvexVault.sol:54"
           },
           {
             "label": "stakingToken",
@@ -2274,7 +2538,7 @@
             "slot": "408",
             "type": "t_address",
             "contract": "AlluoConvexVault",
-            "src": "contracts/AlluoConvexVault.sol:58"
+            "src": "contracts/AlluoConvexVault.sol:55"
           },
           {
             "label": "gnosis",
@@ -2282,87 +2546,71 @@
             "slot": "409",
             "type": "t_address",
             "contract": "AlluoConvexVault",
+            "src": "contracts/AlluoConvexVault.sol:56"
+          },
+          {
+            "label": "rewardsPerShareAccumulated",
+            "offset": 0,
+            "slot": "410",
+            "type": "t_uint256",
+            "contract": "AlluoConvexVault",
+            "src": "contracts/AlluoConvexVault.sol:58"
+          },
+          {
+            "label": "adminFee",
+            "offset": 0,
+            "slot": "411",
+            "type": "t_uint256",
+            "contract": "AlluoConvexVault",
             "src": "contracts/AlluoConvexVault.sol:59"
           },
           {
-            "label": "poolId",
+            "label": "vaultRewardsBefore",
             "offset": 0,
-            "slot": "410",
+            "slot": "412",
+            "type": "t_uint256",
+            "contract": "AlluoConvexVault",
+            "src": "contracts/AlluoConvexVault.sol:60"
+          },
+          {
+            "label": "duration",
+            "offset": 0,
+            "slot": "413",
             "type": "t_uint256",
             "contract": "AlluoConvexVault",
             "src": "contracts/AlluoConvexVault.sol:61"
           },
           {
-            "label": "rewardsPerShareAccumulated",
+            "label": "totalRequestedWithdrawals",
             "offset": 0,
-            "slot": "411",
+            "slot": "414",
             "type": "t_uint256",
             "contract": "AlluoConvexVault",
             "src": "contracts/AlluoConvexVault.sol:62"
           },
           {
-            "label": "adminFee",
+            "label": "upgradeStatus",
             "offset": 0,
-            "slot": "412",
-            "type": "t_uint256",
-            "contract": "AlluoConvexVault",
-            "src": "contracts/AlluoConvexVault.sol:63"
-          },
-          {
-            "label": "vaultRewardsBefore",
-            "offset": 0,
-            "slot": "413",
-            "type": "t_uint256",
+            "slot": "415",
+            "type": "t_bool",
             "contract": "AlluoConvexVault",
             "src": "contracts/AlluoConvexVault.sol:64"
           },
           {
-            "label": "duration",
-            "offset": 0,
-            "slot": "414",
-            "type": "t_uint256",
+            "label": "rewardToken",
+            "offset": 1,
+            "slot": "415",
+            "type": "t_contract(IERC20MetadataUpgradeable)2817",
             "contract": "AlluoConvexVault",
             "src": "contracts/AlluoConvexVault.sol:65"
           },
           {
-            "label": "totalRequestedWithdrawals",
-            "offset": 0,
-            "slot": "415",
-            "type": "t_uint256",
-            "contract": "AlluoConvexVault",
-            "src": "contracts/AlluoConvexVault.sol:66"
-          },
-          {
-            "label": "upgradeStatus",
-            "offset": 0,
-            "slot": "416",
-            "type": "t_bool",
-            "contract": "AlluoConvexVault",
-            "src": "contracts/AlluoConvexVault.sol:68"
-          },
-          {
-            "label": "rewardToken",
-            "offset": 1,
-            "slot": "416",
-            "type": "t_contract(IERC20MetadataUpgradeable)2817",
-            "contract": "AlluoConvexVault",
-            "src": "contracts/AlluoConvexVault.sol:69"
-          },
-          {
             "label": "yieldTokens",
             "offset": 0,
-            "slot": "417",
+            "slot": "416",
             "type": "t_struct(AddressSet)4942_storage",
             "contract": "AlluoConvexVault",
-            "src": "contracts/AlluoConvexVault.sol:71"
-          },
-          {
-            "label": "poolTokens",
-            "offset": 0,
-            "slot": "419",
-            "type": "t_struct(AddressSet)4942_storage",
-            "contract": "AlluoConvexVault",
-            "src": "contracts/AlluoConvexVault.sol:72"
+            "src": "contracts/AlluoConvexVault.sol:67"
           }
         ],
         "types": {
@@ -2414,7 +2662,7 @@
             "label": "mapping(address => mapping(address => uint256))",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_address,t_struct(Shareholder)5365_storage)": {
+          "t_mapping(t_address,t_struct(Shareholder)5358_storage)": {
             "label": "mapping(address => struct AlluoConvexVault.Shareholder)",
             "numberOfBytes": "32"
           },
@@ -2482,7 +2730,7 @@
             ],
             "numberOfBytes": "64"
           },
-          "t_struct(Shareholder)5365_storage": {
+          "t_struct(Shareholder)5358_storage": {
             "label": "struct AlluoConvexVault.Shareholder",
             "members": [
               {
