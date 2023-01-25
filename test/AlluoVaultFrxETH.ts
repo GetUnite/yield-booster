@@ -4,7 +4,8 @@ import { expect } from "chai";
 import { BigNumber } from "ethers";
 import { ethers, network, upgrades } from "hardhat";
 import { afterEach, before } from "mocha";
-import { Exchange, IAlluoPool, ICvxBooster, IERC20MetadataUpgradeable, AlluoConvexVault, IFraxFarmERC20, IConvexWrapper, AlluoVaultPool } from "../typechain";
+import { parse } from "path";
+import { Exchange, IAlluoPool, ICvxBooster, IERC20MetadataUpgradeable, AlluoConvexVaultNative, IFraxFarmERC20, IConvexWrapper, AlluoVaultPool } from "../typechain";
 
 
 async function skipDays(d: number) {
@@ -27,7 +28,7 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
         stakingToken: IConvexWrapper;
     let exchange: Exchange;
     const ZERO_ADDR = ethers.constants.AddressZero;
-    let AlluoVault: AlluoConvexVault;
+    let AlluoVault: AlluoConvexVaultNative;
     let alluoPool: IAlluoPool;
     let ethFrxEthPool: IFraxFarmERC20;
     let admin: SignerWithAddress;
@@ -97,7 +98,7 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
         )
 
         let gnosis = "0x1F020A4943EB57cd3b2213A66b355CB662Ea43C3";
-        let AlluoConvexVault = await ethers.getContractFactory("AlluoConvexVault")
+        let AlluoConvexVault = await ethers.getContractFactory("AlluoConvexVaultNative")
         AlluoVault = await upgrades.deployProxy(AlluoConvexVault, [
             "Eth-frxEth Vault",
             "Eth-frxEth",
@@ -111,7 +112,7 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
         ], {
             initializer: 'initialize',
             kind: 'uups'
-        }) as AlluoConvexVault;
+        }) as AlluoConvexVaultNative;
 
         // let PoolVaultFactory = await ethers.getContractFactory("AlluoVaultPool");
         // alluoPool = await upgrades.deployProxy(PoolVaultFactory, [
@@ -193,6 +194,16 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
 
     })
 
+    // it("Deposit native ETH", async function () {
+
+    //     const amount = parseEther("100");
+    //     await AlluoVault.depositWithoutLP(amount, "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", { value: amount });
+    //     await AlluoVault.stakeUnderlying();
+    //     expect(await AlluoVault.balanceOf(signers[0].address)).to.be.gt(0);
+    //     console.log(await AlluoVault.balanceOf(signers[0].address))
+
+    // })
+
     it("Should revert depositing non LP tokens", async function () {
 
         const usdcBalance = makeEvenNumber(await usdc.balanceOf(signers[0].address));
@@ -203,7 +214,6 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
         expect(AlluoVault.depositWithoutLP(usdcBalance.div(2), usdc.address)).to.be.revertedWith("ERC4626: deposit>max");
 
     })
-
 
 
     it("Claim half of deposited amount", async function () {

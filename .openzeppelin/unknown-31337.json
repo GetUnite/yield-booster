@@ -778,7 +778,7 @@
     },
     {
       "address": "0xd038A2EE73b64F30d65802Ad188F27921656f28F",
-      "txHash": "0xbdd0650c46548cedd5b13fb55b19a9ca672dc3e20fb96d1447089d45d6e42bac",
+      "txHash": "0x128565101801bccb7915eb1a4e8d1f1a5f8c0861ca4e02315757a9662f067678",
       "kind": "uups"
     }
   ],
