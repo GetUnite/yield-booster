@@ -18,7 +18,7 @@ function makeEvenNumber(n: BigNumber) {
     } else return ethers.BigNumber.from(n);
 }
 
-describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
+describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
 
     let signers: SignerWithAddress[];
     let usdc: IERC20MetadataUpgradeable, usdt: IERC20MetadataUpgradeable, frax: IERC20MetadataUpgradeable,
@@ -633,6 +633,32 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
         await cvxCrvFraxBPlp.approve(AlluoVault.address, lpBalance);
         await AlluoVault.mint(lpBalance.div(4), signers[0].address);
         expect(AlluoVault.mint(lpBalance.div(2), signers[0].address)).to.be.revertedWith("ERC4626: mint>max");
+    })
+
+    it("Should have 5 one kek_id after 5 full withdrawals", async function () {
+        const lpBalance = makeEvenNumber(await cvxCrvFraxBPlp.balanceOf(signers[0].address));
+        await cvxCrvFraxBPlp.approve(AlluoVault.address, ethers.constants.MaxUint256);
+        for (let i = 0; i < 6; i++) {
+            await AlluoVault["deposit(uint256)"](lpBalance.div(2));
+            await AlluoVault.stakeUnderlying();
+            await skipDays(8);
+            const signerBalance = await AlluoVault.balanceOf(signers[0].address);
+            await AlluoVault.withdraw(signerBalance, signers[0].address, signers[0].address);
+            await alluoPool.connect(admin).farm();
+            await AlluoVault.claim(cvxCrvFraxBPlp.address, signers[0].address);
+            expect(await cvxCrvFraxBPPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(i + 1);
+            console.log(`Checked: after ${i + 1} full withdrdawals llockedStakesOfLength() is ${i + 1}`)
+        }
+    })
+
+    it("Should not lock funds when calling farm() before stakeUnderlying()", async function () {
+        const lpBalance = makeEvenNumber(await cvxCrvFraxBPlp.balanceOf(signers[0].address));
+        await cvxCrvFraxBPlp.approve(AlluoVault.address, ethers.constants.MaxUint256);
+        await AlluoVault["deposit(uint256)"](lpBalance.div(2));
+        await alluoPool.connect(admin).farm();
+        expect(await cvxCrvFraxBPPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(0);
+        await AlluoVault.stakeUnderlying();
+        expect(await cvxCrvFraxBPPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(1);
     })
 });
 

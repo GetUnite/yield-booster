@@ -19,7 +19,7 @@ function makeEvenNumber(n: BigNumber) {
     } else return ethers.BigNumber.from(n);
 }
 
-describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
+describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
 
     let signers: SignerWithAddress[];
     let usdc: IERC20MetadataUpgradeable, usdt: IERC20MetadataUpgradeable, frax: IERC20MetadataUpgradeable,
@@ -194,15 +194,15 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
 
     })
 
-    // it("Deposit native ETH", async function () {
+    it("Deposit native ETH", async function () {
 
-    //     const amount = parseEther("100");
-    //     await AlluoVault.depositWithoutLP(amount, "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", { value: amount });
-    //     await AlluoVault.stakeUnderlying();
-    //     expect(await AlluoVault.balanceOf(signers[0].address)).to.be.gt(0);
-    //     console.log(await AlluoVault.balanceOf(signers[0].address))
+        const amount = parseEther("100");
+        await AlluoVault.depositWithoutLP(amount, "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", { value: amount });
+        await AlluoVault.stakeUnderlying();
+        expect(await AlluoVault.balanceOf(signers[0].address)).to.be.gt(0);
+        console.log(await AlluoVault.balanceOf(signers[0].address))
 
-    // })
+    })
 
     it("Should revert depositing non LP tokens", async function () {
 
@@ -218,21 +218,23 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
 
     it("Claim half of deposited amount", async function () {
         const lpBalance = makeEvenNumber(await ethFrxEthLp.balanceOf(signers[0].address));
-        console.log(lpBalance);
         await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
         await AlluoVault["deposit(uint256)"](lpBalance.div(2));
         await AlluoVault.stakeUnderlying();
+        console.log("locked length is ", await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address));
         expect(await AlluoVault.lockedBalance()).to.be.eq(lpBalance.div(2));
         await AlluoVault["deposit(uint256)"](lpBalance.div(2));
         await AlluoVault.stakeUnderlying();
-        console.log('here')
         expect(await AlluoVault.lockedBalance()).to.be.eq(lpBalance);
+        console.log("\nlocked length is ", await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address));
+        expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(1);
+
         await AlluoVault.withdraw(lpBalance.div(2), signers[0].address, signers[0].address);
-        console.log('here')
         expect(await AlluoVault.balanceOf(signers[0].address)).to.be.eq(lpBalance);
         await skipDays(8);
         await AlluoVault.loopRewards();
-
+        console.log("\nlocked length after looping reqrds is ", await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address));
+        expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(2);
         expect(await AlluoVault.balanceOf(signers[0].address)).to.be.eq(lpBalance.div(2));
         expect(await stakingToken.balanceOf(AlluoVault.address)).to.be.eq(lpBalance.div(2));
         expect(await AlluoVault.lockedBalance()).to.be.eq(lpBalance.div(2));
@@ -255,6 +257,8 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
         await alluoPool.connect(admin).farm();
         await AlluoVault.connect(signers[1]).claim(frax.address, signers[0].address);
         expect(await frax.balanceOf(signers[0].address)).to.be.gt(ownerBalanceBefore);
+        expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(1);
+        expect(await ethFrxEthPool.lockedLiquidityOf(AlluoVault.address)).to.be.eq(0);
     })
 
     it("Should revert withdrawal over the balance of the owner", async function () {
@@ -329,6 +333,7 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
         expect(await AlluoVault.lockedBalance()).to.be.eq(0);
         await AlluoVault.stakeUnderlying();
         expect(await AlluoVault.lockedBalance()).to.be.eq(0);
+        expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(1);
 
     })
 
@@ -646,6 +651,33 @@ describe("Dola Frax Alluo Vault Upgradeable Tests", function () {
         await ethFrxEthLp.approve(AlluoVault.address, lpBalance);
         await AlluoVault.mint(lpBalance.div(4), signers[0].address);
         expect(AlluoVault.mint(lpBalance.div(2), signers[0].address)).to.be.revertedWith("ERC4626: mint>max");
+    })
+
+    it("Should have 5 one kek_id after 5 full withdrawals", async function () {
+        const lpBalance = makeEvenNumber(await ethFrxEthLp.balanceOf(signers[0].address));
+        await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
+        for (let i = 0; i < 6; i++) {
+            await AlluoVault["deposit(uint256)"](lpBalance.div(2));
+            await AlluoVault.stakeUnderlying();
+            await skipDays(8);
+            const signerBalance = await AlluoVault.balanceOf(signers[0].address);
+            await AlluoVault.withdraw(signerBalance, signers[0].address, signers[0].address);
+            await alluoPool.connect(admin).farm();
+            await AlluoVault.claim(ethFrxEthLp.address, signers[0].address);
+            expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(i + 1);
+            console.log(`Checked: after ${i + 1} full withdrdawals llockedStakesOfLength() is ${i + 1}`)
+        }
+    })
+
+    it("Should not lock funds when calling farm() before stakeUnderlying()", async function () {
+        const lpBalance = makeEvenNumber(await ethFrxEthLp.balanceOf(signers[0].address));
+        await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
+        await AlluoVault["deposit(uint256)"](lpBalance.div(2));
+        await alluoPool.connect(admin).farm();
+        expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(0);
+        await AlluoVault.stakeUnderlying();
+        expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(1);
+        console.log(await AlluoVault.totalSupply(), await AlluoVault.totalAssets())
     })
 });
 

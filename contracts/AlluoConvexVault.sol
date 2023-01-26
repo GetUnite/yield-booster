@@ -1,7 +1,6 @@
 //SPDX-License-Identifier: MIT
 pragma solidity ^0.8.11;
 
-import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -9,17 +8,17 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgrad
 import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/IERC20MetadataUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/structs/EnumerableSetUpgradeable.sol";
 
-import "./interfaces/ICvxBooster.sol";
-import "./interfaces/IExchange.sol";
-import "./interfaces/IConvexWrapper.sol";
-import "./interfaces/IFraxFarmERC20.sol";
-import "./interfaces/IAlluoPool.sol";
+import {ICvxBooster} from "./interfaces/ICvxBooster.sol";
+import {IExchange} from "./interfaces/IExchange.sol";
+import {IConvexWrapper} from "./interfaces/IConvexWrapper.sol";
+import {IFraxFarmERC20} from "./interfaces/IFraxFarmERC20.sol";
+import {IAlluoPool} from "./interfaces/IAlluoPool.sol";
+import {IWrappedEther} from "./interfaces/IWrappedEther.sol";
 
-import "hardhat/console.sol";
+// import "hardhat/console.sol";
 
 contract AlluoConvexVault is
     Initializable,
-    PausableUpgradeable,
     AccessControlUpgradeable,
     UUPSUpgradeable,
     ERC4626Upgradeable
@@ -92,7 +91,6 @@ contract AlluoConvexVault is
         address[] memory _yieldTokens,
         address _fraxPool
     ) public initializer {
-        __Pausable_init();
         __AccessControl_init();
         __UUPSUpgradeable_init();
         __ERC4626_init(_underlying);
@@ -434,13 +432,16 @@ contract AlluoConvexVault is
                 fraxPool,
                 wrappedBalance
             );
-            if (lockedstakes.length == 1) {
+            if (
+                lockedstakes.length == 0 ||
+                lockedstakes[lockedstakes.length - 1].ending_timestamp == 0
+            ) {
+                IFraxFarmERC20(fraxPool).stakeLocked(wrappedBalance, duration);
+            } else {
                 IFraxFarmERC20(fraxPool).lockAdditional(
-                    lockedstakes[0].kek_id,
+                    lockedstakes[lockedstakes.length - 1].kek_id,
                     wrappedBalance
                 );
-            } else if (lockedstakes.length == 0) {
-                IFraxFarmERC20(fraxPool).stakeLocked(wrappedBalance, duration);
             }
         }
     }
@@ -475,10 +476,13 @@ contract AlluoConvexVault is
             fraxPool
         ).lockedStakesOf(address(this));
 
-        if (lockedstakes.length == 1) {
-            if (lockedstakes[0].ending_timestamp < block.timestamp) {
+        if (lockedstakes.length != 0) {
+            if (
+                lockedstakes[lockedstakes.length - 1].ending_timestamp <
+                block.timestamp
+            ) {
                 IFraxFarmERC20(fraxPool).withdrawLocked(
-                    lockedstakes[0].kek_id,
+                    lockedstakes[lockedstakes.length - 1].kek_id,
                     address(this)
                 ); // claims rewards from frax
 
@@ -514,12 +518,12 @@ contract AlluoConvexVault is
         }
         _relockToFrax();
 
-        console.log(
-            "Vault reward after",
-            IAlluoPool(alluoPool).rewardTokenBalance()
-        );
-        console.log("Frax Vault rewards before", vaultRewardsBefore);
-        console.log("Frax Total rewards", totalRewards);
+        // console.log(
+        //     "Vault reward after",
+        //     IAlluoPool(alluoPool).rewardTokenBalance()
+        // );
+        // console.log("Frax Vault rewards before", vaultRewardsBefore);
+        // console.log("Frax Total rewards", totalRewards);
     }
 
     /// @notice Unlocks all funds from Frax Convex. Wrapped lp tokens are transfered to the vault.
@@ -528,11 +532,14 @@ contract AlluoConvexVault is
             fraxPool
         ).lockedStakesOf(address(this));
         if (
-            lockedstakes.length == 1 &&
-            lockedstakes[0].ending_timestamp <= block.timestamp
+            lockedstakes.length != 0 &&
+            lockedstakes[lockedstakes.length - 1].ending_timestamp <=
+            block.timestamp
         ) {
-            bytes32 kek_id = lockedstakes[0].kek_id;
-            IFraxFarmERC20(fraxPool).withdrawLocked(kek_id, address(this));
+            IFraxFarmERC20(fraxPool).withdrawLocked(
+                lockedstakes[lockedstakes.length - 1].kek_id,
+                address(this)
+            );
         } else return;
     }
 
@@ -638,14 +645,6 @@ contract AlluoConvexVault is
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
         upgradeStatus = _status;
-    }
-
-    function pause() external onlyRole(DEFAULT_ADMIN_ROLE) {
-        _pause();
-    }
-
-    function unpause() external onlyRole(DEFAULT_ADMIN_ROLE) {
-        _unpause();
     }
 
     function setAdminFee(uint256 fee) external onlyRole(DEFAULT_ADMIN_ROLE) {
