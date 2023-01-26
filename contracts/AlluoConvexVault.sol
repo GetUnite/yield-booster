@@ -15,7 +15,7 @@ import {IFraxFarmERC20} from "./interfaces/IFraxFarmERC20.sol";
 import {IAlluoPool} from "./interfaces/IAlluoPool.sol";
 import {IWrappedEther} from "./interfaces/IWrappedEther.sol";
 
-import "hardhat/console.sol";
+// import "hardhat/console.sol";
 
 contract AlluoConvexVault is
     Initializable,
@@ -55,7 +55,6 @@ contract AlluoConvexVault is
     uint256 public vaultRewardsBefore;
     uint256 public duration;
     uint256 public totalRequestedWithdrawals;
-    uint256 public newRequestedWithdrawals;
 
     bool public upgradeStatus;
     IERC20MetadataUpgradeable public rewardToken;
@@ -66,6 +65,17 @@ contract AlluoConvexVault is
     using SafeERC20Upgradeable for IERC20MetadataUpgradeable;
     using EnumerableSetUpgradeable for EnumerableSetUpgradeable.AddressSet;
     using MathUpgradeable for uint256;
+
+    event Claim(
+        address indexed exitToken,
+        uint256 indexed amount,
+        address indexed receiver
+    );
+    event ClaimRewards(
+        address indexed exitToken,
+        uint256 indexed rewardTokeans,
+        address owner
+    );
 
     struct RewardData {
         address token;
@@ -120,13 +130,23 @@ contract AlluoConvexVault is
         stakingToken = IFraxFarmERC20(fraxPool).stakingToken();
     }
 
-    /// @notice Deposits an amount of LP underlying and mints shares in the vault. Wrapps LP tokens deposited to the vault.
+    /// @notice Deposits an amount of LP underlying and mints shares in the vault.
     /// @dev Read the difference between deposit and mint at the start of the contract. Makes sure to distribute rewards before any actions occur
     /// @param assets Amount of assets deposited
+    /// @param receiver Recipient of shares
     /// @return shares amount of shares minted
-    function deposit(uint256 assets) external returns (uint256 shares) {
+    function deposit(uint256 assets, address receiver)
+        public
+        override
+        returns (uint256 shares)
+    {
         _distributeReward(_msgSender());
-        shares = deposit(assets, _msgSender());
+        require(
+            assets <= maxDeposit(receiver),
+            "ERC4626: deposit more than max"
+        );
+        shares = previewDeposit(assets);
+        _deposit(_msgSender(), receiver, assets, shares);
     }
 
     /// @notice Deposits an amount of any ERC20 and mints shares in the vault.
@@ -335,19 +355,21 @@ contract AlluoConvexVault is
         if (caller != owner) {
             _spendAllowance(owner, caller, shares);
         }
+        // `withdrawalRequested` is the amount of assets already requested for withdrawal but not yet claimed
+        // We should check if the amount already requested plus the new request is not more than a user's deposit
         require(
             userWithdrawals[owner].withdrawalRequested + assets <=
                 previewRedeem(maxRedeem(owner))
         );
-
+        // `id` is needed to handle requested withdrawals when Vault shares are transferred
+        // `withdrawalqueue` is needed to go through a loop in `_processWithdrawalRequests()` and sum all requests to keep necessary amount of LPs on the contract
         if (userWithdrawals[owner].withdrawalRequested == 0) {
             withdrawalqueue.push(owner);
             userWithdrawals[owner].id = withdrawalqueue.length; // will alsways be > 0
         }
-
+        // `withdrawalRequested` cannot be decreased, user can only add to the amount already requested
         userWithdrawals[owner].withdrawalRequested += assets;
-        newRequestedWithdrawals += assets; // always add because withdrawals can only be increased, not overwritten
-        emit Withdraw(caller, receiver, owner, assets, shares); //should we keep event here?
+        emit Withdraw(caller, receiver, owner, assets, shares);
     }
 
     /// @notice Claims the unlocked funds previously requested for withdrawal
@@ -359,6 +381,7 @@ contract AlluoConvexVault is
         virtual
         returns (uint256 amount)
     {
+        // `withdrawalAvailable` keeps the amount which has been unlocked from Frax Convex after calling farm() and kept to satisfy a user's withdrawal request
         amount = userWithdrawals[receiver].withdrawalAvailable;
         if (amount > 0) {
             totalRequestedWithdrawals -= amount;
@@ -373,7 +396,8 @@ contract AlluoConvexVault is
             }
             IERC20MetadataUpgradeable(exitToken).safeTransfer(receiver, amount);
         }
-        //todo: emit claim satisfied event
+
+        emit Claim(exitToken, amount, receiver);
     }
 
     /// @notice Allows users to claim their rewards in an ERC20 supported by the Alluo exchange
@@ -405,6 +429,7 @@ contract AlluoConvexVault is
                 rewardTokens
             );
         }
+        emit ClaimRewards(exitToken, rewardTokens, _msgSender());
     }
 
     /// @dev To be called periodically by resolver. kek_id is deleted in frax convex pool once all funds are unlocked
@@ -422,12 +447,8 @@ contract AlluoConvexVault is
         }
 
         // 2. Lock additional
-        console.log(
-            "wrapped balance",
-            IConvexWrapper(stakingToken).balanceOf(address(this))
-        );
-        console.log("withdrawal requests", totalRequestedWithdrawals);
-        console.log("new withdrawal requests", newRequestedWithdrawals);
+        // `totalRequestedWithdrawals` are all accumulated unsatisfied withdrawal requestes made up before the last farm() call
+        // Wrapped lps of amount equal to `totalRequestedWithdrawals` should always be left on tbe contract to satisfy users' claims
         if (
             IConvexWrapper(stakingToken).balanceOf(address(this)) >
             totalRequestedWithdrawals
@@ -455,12 +476,13 @@ contract AlluoConvexVault is
                 );
             }
         }
-        // newRequestedWithdrawals = 0;
     }
 
     /// @notice Burns share of users in the withdrawal queue
     /// @dev Internal function to be called only when funds are unlocked from Frax
     function _processWithdrawalRequests() internal returns (uint256) {
+        // Any withdrawal requests made during the current cycle before farm() call are added to `newUnsatisfiedWithdrawals`
+        // Wrapped lps equal to `newUnsatisfiedWithdrawals` should be left on the contract before locking again to Frax Convex
         uint256 newUnsatisfiedWithdrawals;
         if (withdrawalqueue.length != 0) {
             for (uint256 i = withdrawalqueue.length; i > 0; i--) {
@@ -563,7 +585,7 @@ contract AlluoConvexVault is
             IERC20MetadataUpgradeable(asset()).balanceOf(address(this)) +
             stakedBalance() +
             lockedBalance() -
-            totalRequestedWithdrawals;
+            totalRequestedWithdrawals; // wrapped lps left on the contract to satisfy users' claims
     }
 
     function stakedBalance() public view returns (uint256) {
@@ -604,6 +626,7 @@ contract AlluoConvexVault is
     ) internal virtual override {
         _distributeReward(from);
         _distributeReward(to);
+        // the logic below handles the changes to be made in `userWithdrawals` mapping when shares are tranferred
         if (
             userWithdrawals[from].withdrawalRequested != 0 && to != address(0)
         ) {
