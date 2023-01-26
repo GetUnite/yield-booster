@@ -4,7 +4,7 @@ import { expect } from "chai";
 import { BigNumber } from "ethers";
 import { ethers, network, upgrades } from "hardhat";
 import { afterEach, before } from "mocha";
-import { Exchange, IERC20MetadataUpgradeable, AlluoConvexVault, IFraxFarmERC20, IConvexWrapper, AlluoVaultPool } from "../typechain";
+import { Exchange, IERC20MetadataUpgradeable, AlluoConvexVaultNative, IFraxFarmERC20, IConvexWrapper, AlluoVaultPool } from "../typechain";
 
 
 async function skipDays(d: number) {
@@ -27,7 +27,7 @@ describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
         stakingToken: IConvexWrapper;
     let exchange: Exchange;
     const ZERO_ADDR = ethers.constants.AddressZero;
-    let AlluoVault: AlluoConvexVault;
+    let AlluoVault: AlluoConvexVaultNative;
     let alluoPool: AlluoVaultPool;
     let cvxCrvFraxBPPool: IFraxFarmERC20;
     let admin: SignerWithAddress;
@@ -58,7 +58,7 @@ describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
     before(async () => {
 
         await resetNetwork();
-        console.log('\n', "||| Confirm that the _grantRoles(.., msg.sender) in AlluoConvexVault.sol has been uncommented to ensure tests are functioning correctly |||", '\n')
+        console.log('\n', "||| Confirm that the _grantRoles(.., msg.sender) in AlluoConvexVaultNative.sol has been uncommented to ensure tests are functioning correctly |||", '\n')
 
     });
 
@@ -97,8 +97,8 @@ describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
         )
 
         let gnosis = "0x1F020A4943EB57cd3b2213A66b355CB662Ea43C3";
-        let AlluoConvexVault = await ethers.getContractFactory("AlluoConvexVault")
-        AlluoVault = await upgrades.deployProxy(AlluoConvexVault, [
+        let AlluoConvexVaultNative = await ethers.getContractFactory("AlluoConvexVaultNative")
+        AlluoVault = await upgrades.deployProxy(AlluoConvexVaultNative, [
             "cvxCrv-FraxBP Vault",
             "cvxCrv-FraxBP",
             cvxCrvFraxBPlp.address, // underlying token
@@ -111,7 +111,7 @@ describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
         ], {
             initializer: 'initialize',
             kind: 'uups'
-        }) as AlluoConvexVault;
+        }) as AlluoConvexVaultNative;
 
         // let PoolVaultFactory = await ethers.getContractFactory("AlluoVaultPool");
         // alluoPool = await upgrades.deployProxy(PoolVaultFactory, [

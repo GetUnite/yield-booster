@@ -203,6 +203,13 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
 
     })
 
+    it("Revert depositing native ETH due to wrong value", async function () {
+
+        const amount = parseEther("100");
+        await expect(AlluoVault.depositWithoutLP(amount, "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", { value: amount.div(2) })).to.be.revertedWith("AlluoVault: wrong value");
+
+    })
+
     it("Claim half of deposited amount", async function () {
         const lpBalance = makeEvenNumber(await ethFrxEthLp.balanceOf(signers[0].address));
         await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
@@ -818,6 +825,24 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
         await alluoPool.connect(admin).farm();
         await AlluoVault.connect(signers[1]).claim(frax.address, signers[0].address);
         expect(await frax.balanceOf(signers[0].address)).to.be.gt(ownerBalanceBefore);
+    })
+
+    it("Should claim in native ETH", async function () {
+
+        const lpBalance = makeEvenNumber(await ethFrxEthLp.balanceOf(signers[0].address));
+        await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
+        await AlluoVault.deposit(lpBalance.div(2), signers[0].address);
+        await AlluoVault.stakeUnderlying(); // locks funds
+        await AlluoVault.withdraw(lpBalance.div(2), signers[0].address, signers[0].address);
+        await skipDays(8);
+        await AlluoVault.loopRewards();
+
+        const balanceBefore = await ethers.provider.getBalance(signers[0].address);
+        await AlluoVault.connect(signers[1]).claim("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", signers[0].address);
+        const balanceAfter = await ethers.provider.getBalance(signers[0].address);
+
+        expect(balanceAfter).to.be.gt(balanceBefore)
+
     })
 });
 

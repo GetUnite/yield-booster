@@ -130,6 +130,8 @@ contract AlluoConvexVaultNative is
         stakingToken = IFraxFarmERC20(fraxPool).stakingToken();
     }
 
+    receive() external payable {}
+
     /// @notice Deposits an amount of LP underlying and mints shares in the vault.
     /// @dev Read the difference between deposit and mint at the start of the contract. Makes sure to distribute rewards before any actions occur
     /// @param assets Amount of assets deposited
@@ -163,7 +165,7 @@ contract AlluoConvexVaultNative is
         _distributeReward(_msgSender());
 
         if (entryToken == 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE) {
-            // require(msg.value == assets, "AlluoVault: wrong value");
+            require(msg.value == assets, "AlluoVault: wrong value");
             IWrappedEther(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2).deposit{
                 value: msg.value
             }();
@@ -397,14 +399,37 @@ contract AlluoConvexVaultNative is
             totalRequestedWithdrawals -= amount;
             delete userWithdrawals[receiver];
             IConvexWrapper(stakingToken).withdrawAndUnwrap(amount);
-            if (exitToken != asset()) {
+            if (exitToken == 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE) {
+                IERC20MetadataUpgradeable(asset()).safeIncreaseAllowance(
+                    address(EXCHANGE),
+                    amount
+                );
+                amount = EXCHANGE.exchange(
+                    asset(),
+                    address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2),
+                    amount,
+                    0
+                );
+                IWrappedEther(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2)
+                    .withdraw(amount);
+                (bool success, ) = receiver.call{value: amount}("");
+                require(success, "AlluoVault: fail to send eth");
+            } else if (exitToken != asset()) {
                 IERC20MetadataUpgradeable(asset()).safeIncreaseAllowance(
                     address(EXCHANGE),
                     amount
                 );
                 amount = EXCHANGE.exchange(asset(), exitToken, amount, 0);
+                IERC20MetadataUpgradeable(exitToken).safeTransfer(
+                    receiver,
+                    amount
+                );
+            } else {
+                IERC20MetadataUpgradeable(exitToken).safeTransfer(
+                    receiver,
+                    amount
+                );
             }
-            IERC20MetadataUpgradeable(exitToken).safeTransfer(receiver, amount);
         }
         emit Claim(exitToken, amount, receiver);
     }
