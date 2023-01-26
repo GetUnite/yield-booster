@@ -81,13 +81,13 @@ const config: HardhatUserConfig = {
         mnemonic: process.env.MNEMONIC,
       },
     },
-    sepolia: {
-      url: process.env.SEPOLIA_URL,
-      gasPrice: "auto",
-      accounts: {
-        mnemonic: process.env.MNEMONIC,
-      },
-    },
+    // sepolia: {
+    //   url: process.env.SEPOLIA_URL,
+    //   gasPrice: "auto",
+    //   accounts: {
+    //     mnemonic: process.env.MNEMONIC,
+    //   },
+    // },
   },
 
   gasReporter: {

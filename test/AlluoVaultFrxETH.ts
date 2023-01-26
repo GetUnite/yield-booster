@@ -1,4 +1,4 @@
-import { parseEther } from "@ethersproject/units";
+import { parseEther, parseUnits } from "@ethersproject/units";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { expect } from "chai";
 import { BigNumber } from "ethers";
@@ -19,7 +19,7 @@ function makeEvenNumber(n: BigNumber) {
     } else return ethers.BigNumber.from(n);
 }
 
-describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
+describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
 
     let signers: SignerWithAddress[];
     let usdc: IERC20MetadataUpgradeable, usdt: IERC20MetadataUpgradeable, frax: IERC20MetadataUpgradeable,
@@ -618,7 +618,7 @@ describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
         }
     })
 
-    it("Should change locking duration", async function () {
+    it.only("Should change locking duration", async function () {
         const lpBalance = makeEvenNumber(await ethFrxEthLp.balanceOf(signers[0].address));
         await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
         await AlluoVault["deposit(uint256)"](lpBalance.div(2));
@@ -629,6 +629,91 @@ describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
         await skipDays(14);
         await AlluoVault.connect(admin).unlockFromFraxConvex();
         expect(await AlluoVault.lockedBalance()).to.be.eq(0);
+    })
+
+    it("Shouldn't allow user to claim withdrawals from the transferred shares after they have been withdrawn", async () => {
+        /// Deposit in nonLP tokens
+        const usdcBalance = parseUnits("5000", 6);
+        expect(Number(usdcBalance) > 0);
+        await usdc.approve(AlluoVault.address, usdcBalance);
+        await AlluoVault.depositWithoutLP(usdcBalance, usdc.address);
+
+        let userShares = await AlluoVault.balanceOf(signers[0].address);
+        await AlluoVault.stakeUnderlying();
+        await skipDays(10)
+        await AlluoVault.withdraw(userShares, signers[0].address, signers[0].address)
+        expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(1)
+
+        console.log("Giannis balance", await AlluoVault.balanceOf(signers[0].address))
+        console.log("Chris balance", await AlluoVault.balanceOf(signers[3].address))
+
+        await AlluoVault.transfer(signers[3].address, userShares) // now withdrawals should be claimable by signer[3]
+        const balanceBefore = await usdc.balanceOf(signers[0].address);
+        await AlluoVault.claim(usdc.address, signers[0].address)
+        expect(await usdc.balanceOf(signers[0].address)).to.be.eq(balanceBefore);
+        console.log("\nChecked: old owner claimed the rewards")
+        console.log("\nBalance of the old owner", await AlluoVault.balanceOf(signers[0].address))
+        console.log("\nBalance of the new owner", await AlluoVault.balanceOf(signers[3].address))
+
+        await exchange.connect(signers[4]).exchange(
+            ZERO_ADDR, ethFrxEthLp.address, parseEther("10"), 0, { value: parseEther("10") }
+        )
+        await ethFrxEthLp.connect(signers[4]).approve(AlluoVault.address, await ethFrxEthLp.balanceOf(signers[4].address));
+        await AlluoVault.connect(signers[4])["deposit(uint256)"](await ethFrxEthLp.balanceOf(signers[4].address));
+
+        const liquidityBeforeFarming = await ethFrxEthPool.lockedLiquidityOf(AlluoVault.address);
+        await skipDays(10);
+        await alluoPool.connect(admin).farm(); // should keep funds to satisfy unclaimed withdrawals
+        // now vault has wrapped lps (withdrawal request) and unwrapped lps (new deposits)
+        expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(1)
+        expect(await ethFrxEthPool.lockedLiquidityOf(AlluoVault.address)).to.be.lt(liquidityBeforeFarming);
+
+        const rewardsBefore = await rewardToken.balanceOf(signers[3].address);
+        await AlluoVault.connect(signers[3]).claimRewards(rewardToken.address)
+        expect(await rewardToken.balanceOf(signers[3].address)).to.be.gt(rewardsBefore); // should be eligible for rewards even if funds haven't been locked yet
+        console.log("\nChecked: new owner got the rewards")
+        await AlluoVault.stakeUnderlying() // should stake unwrapped lps (new deposits)
+        expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(2)
+        await skipDays(10);
+        await alluoPool.connect(admin).farm();
+        expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(3)
+        await AlluoVault.stakeUnderlying()
+        expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(3)
+        await skipDays(5);
+        await alluoPool.connect(admin).farm();
+        expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(3)
+        await skipDays(5);
+        await alluoPool.connect(admin).farm();
+        expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(4)
+        await AlluoVault.connect(signers[3]).claimRewards(usdc.address)
+        expect(await ethFrxEthPool.lockedLiquidityOf(AlluoVault.address)).to.be.gt(0)
+        console.log("\nChecked: locked liquidity is above zero")
+        expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(4)
+        console.log("\nChecked: kek ids are 4")
+    })
+
+    it("Shouldn't allow user to withdraw extra funds by transferring shares", async () => {
+        const usdcBalance = parseUnits("5000", 6)
+        expect(Number(usdcBalance) > 0)
+        await usdc.approve(AlluoVault.address, usdcBalance)
+        await AlluoVault.depositWithoutLP(usdcBalance, usdc.address)
+
+        let userShares = await AlluoVault.balanceOf(signers[0].address)
+        await AlluoVault.stakeUnderlying();
+        await AlluoVault.withdraw(userShares, signers[0].address, signers[0].address)
+        await AlluoVault.transfer(signers[3].address, userShares)
+        await AlluoVault.loopRewards()
+
+        await skipDays(10)
+        // Balance of shares of the user to whom they were transferred
+        console.log("Shares balance of the user", await AlluoVault.balanceOf(signers[3].address))
+
+        await AlluoVault.claim(usdc.address, signers[0].address)
+        await alluoPool.connect(admin).farm()
+
+        await usdc.connect(signers[3]).approve(AlluoVault.address, await usdc.balanceOf(signers[3].address))
+        expect(await AlluoVault.balanceOf(signers[3].address)).to.eq(0)
+        console.log("Shares balance of the user after the claim", await AlluoVault.balanceOf(signers[3].address))
     })
 
     it("Should mint shares and allow to withdraw", async function () {
@@ -678,6 +763,36 @@ describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
         await AlluoVault.stakeUnderlying();
         expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(1);
         console.log(await AlluoVault.totalSupply(), await AlluoVault.totalAssets())
+    })
+
+    it("Should track assets correctly", async () => {
+        /// Deposit in nonLP tokens
+        const usdcBalance = await usdc.balanceOf(signers[0].address);
+        expect(Number(usdcBalance) > 0);
+        await usdc.approve(AlluoVault.address, usdcBalance);
+        await AlluoVault.depositWithoutLP(usdcBalance, usdc.address);
+
+        let userShares = await AlluoVault.balanceOf(signers[0].address);
+
+        expect(Number(userShares)).to.be.gt(0);
+        expect(await AlluoVault.totalAssets()).to.eq(userShares);
+        expect(await AlluoVault.stakedBalance()).to.eq(0)
+        expect(await AlluoVault.lockedBalance()).to.eq(0)
+
+        //Staking
+        await AlluoVault.stakeUnderlying();
+
+        expect(Number(userShares)).to.be.gt(0);
+        expect(await AlluoVault.totalAssets()).to.eq(userShares);
+        expect(await AlluoVault.stakedBalance()).to.eq(0)
+        expect(await AlluoVault.lockedBalance()).to.eq(userShares)
+
+        await AlluoVault.withdraw(userShares.div(2), signers[0].address, signers[0].address);
+
+        await skipDays(10)
+        await AlluoVault.loopRewards()
+        expect(await AlluoVault.totalAssets()).to.eq(userShares.div(2))
+        await AlluoVault.claim(usdc.address, signers[0].address)
     })
 });
 

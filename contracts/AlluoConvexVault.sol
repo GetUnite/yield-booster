@@ -55,6 +55,7 @@ contract AlluoConvexVault is
     uint256 public vaultRewardsBefore;
     uint256 public duration;
     uint256 public totalRequestedWithdrawals;
+    uint256 public newRequestedWithdrawals;
 
     bool public upgradeStatus;
     IERC20MetadataUpgradeable public rewardToken;
@@ -345,6 +346,7 @@ contract AlluoConvexVault is
         }
 
         userWithdrawals[owner].withdrawalRequested += assets;
+        newRequestedWithdrawals += assets; // always add because withdrawals can only be increased, not overwritten
         emit Withdraw(caller, receiver, owner, assets, shares); //should we keep event here?
     }
 
@@ -420,9 +422,15 @@ contract AlluoConvexVault is
         }
 
         // 2. Lock additional
+        // console.log(
+        //     "wrapped balance",
+        //     IConvexWrapper(stakingToken).balanceOf(address(this))
+        // );
+        // console.log("withdrawal requests", totalRequestedWithdrawals);
+        // console.log("new withdrawal requests", newRequestedWithdrawals);
         uint256 wrappedBalance = IConvexWrapper(stakingToken).balanceOf(
             address(this)
-        ) - totalRequestedWithdrawals;
+        ) - newRequestedWithdrawals;
         if (wrappedBalance > 0) {
             IFraxFarmERC20.LockedStake[] memory lockedstakes = IFraxFarmERC20(
                 fraxPool
@@ -444,6 +452,7 @@ contract AlluoConvexVault is
                 );
             }
         }
+        newRequestedWithdrawals = 0;
     }
 
     /// @notice Burns share of users in the withdrawal queue
@@ -476,7 +485,10 @@ contract AlluoConvexVault is
             fraxPool
         ).lockedStakesOf(address(this));
 
-        if (lockedstakes.length != 0) {
+        if (
+            lockedstakes.length != 0 &&
+            lockedstakes[lockedstakes.length - 1].ending_timestamp != 0 // ensure that we already have locked funds, otherwise call stakeUnderlying() before
+        ) {
             if (
                 lockedstakes[lockedstakes.length - 1].ending_timestamp <
                 block.timestamp
