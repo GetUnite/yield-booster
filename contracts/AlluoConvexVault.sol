@@ -15,7 +15,7 @@ import {IFraxFarmERC20} from "./interfaces/IFraxFarmERC20.sol";
 import {IAlluoPool} from "./interfaces/IAlluoPool.sol";
 import {IWrappedEther} from "./interfaces/IWrappedEther.sol";
 
-// import "hardhat/console.sol";
+import "hardhat/console.sol";
 
 contract AlluoConvexVault is
     Initializable,
@@ -422,16 +422,19 @@ contract AlluoConvexVault is
         }
 
         // 2. Lock additional
-        // console.log(
-        //     "wrapped balance",
-        //     IConvexWrapper(stakingToken).balanceOf(address(this))
-        // );
-        // console.log("withdrawal requests", totalRequestedWithdrawals);
-        // console.log("new withdrawal requests", newRequestedWithdrawals);
-        uint256 wrappedBalance = IConvexWrapper(stakingToken).balanceOf(
-            address(this)
-        ) - newRequestedWithdrawals;
-        if (wrappedBalance > 0) {
+        console.log(
+            "wrapped balance",
+            IConvexWrapper(stakingToken).balanceOf(address(this))
+        );
+        console.log("withdrawal requests", totalRequestedWithdrawals);
+        console.log("new withdrawal requests", newRequestedWithdrawals);
+        if (
+            IConvexWrapper(stakingToken).balanceOf(address(this)) >
+            totalRequestedWithdrawals
+        ) {
+            uint256 wrappedBalance = IConvexWrapper(stakingToken).balanceOf(
+                address(this)
+            ) - totalRequestedWithdrawals;
             IFraxFarmERC20.LockedStake[] memory lockedstakes = IFraxFarmERC20(
                 fraxPool
             ).lockedStakesOf(address(this));
@@ -452,7 +455,7 @@ contract AlluoConvexVault is
                 );
             }
         }
-        newRequestedWithdrawals = 0;
+        // newRequestedWithdrawals = 0;
     }
 
     /// @notice Burns share of users in the withdrawal queue

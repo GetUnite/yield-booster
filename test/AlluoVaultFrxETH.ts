@@ -326,10 +326,13 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
         const lpBalance = makeEvenNumber(await ethFrxEthLp.balanceOf(signers[0].address));
         await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
         await AlluoVault["deposit(uint256)"](lpBalance.div(2));
+        console.log("Locked balance 1 ", await AlluoVault.lockedBalance());
         await AlluoVault.stakeUnderlying();
+        console.log("Locked balance 2", await AlluoVault.lockedBalance());
         await AlluoVault.withdraw(lpBalance.div(2), signers[0].address, signers[0].address);
         await skipDays(8);
-        await alluoPool.connect(admin).farm();
+        await alluoPool.connect(admin).farm(); // with unlock funds
+        console.log("Locked balance 3", await AlluoVault.lockedBalance());
         expect(await AlluoVault.lockedBalance()).to.be.eq(0);
         await AlluoVault.stakeUnderlying();
         expect(await AlluoVault.lockedBalance()).to.be.eq(0);
@@ -618,7 +621,7 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
         }
     })
 
-    it.only("Should change locking duration", async function () {
+    it("Should change locking duration", async function () {
         const lpBalance = makeEvenNumber(await ethFrxEthLp.balanceOf(signers[0].address));
         await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
         await AlluoVault["deposit(uint256)"](lpBalance.div(2));
