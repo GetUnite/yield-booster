@@ -7,6 +7,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/IERC20MetadataUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/structs/EnumerableSetUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 
 import {ICvxBooster} from "./interfaces/ICvxBooster.sol";
 import {IExchange} from "./interfaces/IExchange.sol";
@@ -17,9 +18,10 @@ import {IWrappedEther} from "./interfaces/IWrappedEther.sol";
 
 // import "hardhat/console.sol";
 
-contract AlluoConvexVaultNative is
+contract AlluoLockedVault is
     Initializable,
     AccessControlUpgradeable,
+    ReentrancyGuardUpgradeable,
     UUPSUpgradeable,
     ERC4626Upgradeable
 {
@@ -73,8 +75,16 @@ contract AlluoConvexVaultNative is
     );
     event ClaimRewards(
         address indexed exitToken,
-        uint256 indexed rewardTokeans,
+        uint256 indexed rewardTokens,
         address owner
+    );
+
+    event LockedAdditional(bytes32 indexed kek_id, uint256 indexed amount);
+
+    event StakeLocked(
+        bytes32 indexed kek_id,
+        uint256 indexed remainingsToLock,
+        uint256 indexed duration
     );
 
     struct RewardData {
@@ -105,6 +115,7 @@ contract AlluoConvexVaultNative is
         __UUPSUpgradeable_init();
         __ERC4626_init(_underlying);
         __ERC20_init(_name, _symbol);
+        __ReentrancyGuard_init();
         alluoPool = _alluoPool;
         rewardToken = _rewardToken;
         fraxPool = _fraxPool;
@@ -159,6 +170,7 @@ contract AlluoConvexVaultNative is
     function depositWithoutLP(uint256 assets, address entryToken)
         external
         payable
+        nonReentrant
         returns (uint256 shares)
     {
         _distributeReward(_msgSender());
@@ -199,7 +211,8 @@ contract AlluoConvexVaultNative is
     {
         _distributeReward(_msgSender());
         require(shares <= maxMint(receiver), "ERC4626: mint>max");
-        _deposit(_msgSender(), receiver, previewMint(shares), shares);
+        uint256 assets = previewMint(shares);
+        _deposit(_msgSender(), receiver, assets, shares);
         return previewMint(shares);
     }
 
@@ -367,11 +380,12 @@ contract AlluoConvexVaultNative is
     ) public override returns (uint256 shares) {
         require(assets > 0, "AlluoVault: zero withdrawal");
 
+        Shareholder memory shareholder = userWithdrawals[owner];
+
         // `withdrawalRequested` is the amount of assets already requested for withdrawal but not yet claimed
         // We should check if the amount already requested plus the new request is not more than a user's deposit
         require(
-            userWithdrawals[owner].withdrawalRequested + assets <=
-                maxWithdraw(owner),
+            shareholder.withdrawalRequested + assets <= maxWithdraw(owner),
             "AlluoVault: withdraw over max"
         );
 
@@ -383,11 +397,11 @@ contract AlluoConvexVaultNative is
         }
 
         // `withdrawalqueue` is needed to go through a loop in `_processWithdrawalRequests()` and sum all requests to keep necessary amount of LPs on the contract
-        if (userWithdrawals[owner].withdrawalRequested == 0) {
+        if (shareholder.withdrawalRequested == 0) {
             withdrawalqueue.push(owner);
         }
         // `withdrawalRequested` cannot be decreased, user can only add to the amount already requested
-        userWithdrawals[owner].withdrawalRequested += assets;
+        shareholder.withdrawalRequested += assets;
         emit Withdraw(_msgSender(), receiver, owner, assets, shares);
     }
 
@@ -404,8 +418,9 @@ contract AlluoConvexVaultNative is
     ) public override returns (uint256 assets) {
         assets = previewRedeem(shares);
         require(assets > 0, "AlluoVault: zero withdrawal");
+        Shareholder memory shareholder = userWithdrawals[owner];
         require(
-            userWithdrawals[owner].withdrawalRequested + assets <=
+            shareholder.withdrawalRequested + assets <=
                 previewRedeem(maxRedeem(owner)),
             "AlluoVault: redeem over max"
         );
@@ -417,11 +432,11 @@ contract AlluoConvexVaultNative is
         // We should check if the amount already requested plus the new request is not more than a user's deposit
 
         // `withdrawalqueue` is needed to go through a loop in `_processWithdrawalRequests()` and sum all requests to keep necessary amount of LPs on the contract
-        if (userWithdrawals[owner].withdrawalRequested == 0) {
+        if (shareholder.withdrawalRequested == 0) {
             withdrawalqueue.push(owner);
         }
         // `withdrawalRequested` cannot be decreased, user can only add to the amount already requested
-        userWithdrawals[owner].withdrawalRequested += assets;
+        shareholder.withdrawalRequested += assets;
         emit Withdraw(_msgSender(), receiver, owner, assets, shares);
     }
 
@@ -432,15 +447,17 @@ contract AlluoConvexVaultNative is
     function claim(address exitToken, address receiver)
         external
         virtual
+        nonReentrant
         returns (uint256 amount)
     {
-        amount = userWithdrawals[receiver].withdrawalAvailable;
+        Shareholder memory shareholder = userWithdrawals[receiver];
+        amount = shareholder.withdrawalAvailable;
         if (amount > 0) {
             totalRequestedWithdrawals -= amount;
-            if (userWithdrawals[receiver].withdrawalRequested == 0) {
+            if (shareholder.withdrawalRequested == 0) {
                 delete userWithdrawals[receiver];
             } else {
-                userWithdrawals[receiver].withdrawalAvailable = 0;
+                shareholder.withdrawalAvailable = 0;
             }
             IConvexWrapper(stakingToken).withdrawAndUnwrap(amount);
             if (exitToken == 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE) {
@@ -525,28 +542,34 @@ contract AlluoConvexVaultNative is
         }
 
         // 2. Lock additional
-        if (
-            IConvexWrapper(stakingToken).balanceOf(address(this)) >
-            totalRequestedWithdrawals
-        ) {
-            uint256 wrappedBalance = IConvexWrapper(stakingToken).balanceOf(
-                address(this)
-            ) - totalRequestedWithdrawals;
-            IFraxFarmERC20.LockedStake[] memory lockedstakes = IFraxFarmERC20(
-                fraxPool
-            ).lockedStakesOf(address(this));
 
-            IERC20MetadataUpgradeable(stakingToken).safeIncreaseAllowance(
-                fraxPool,
-                wrappedBalance
-            );
+        IFraxFarmERC20.LockedStake[] memory lockedstakes = IFraxFarmERC20(
+            fraxPool
+        ).lockedStakesOf(address(this));
+
+        // lock only if we already have locked already
+        if (
+            lockedstakes.length != 0 &&
+            lockedstakes[lockedstakes.length - 1].ending_timestamp != 0
+        ) {
             if (
-                lockedstakes.length == 0 ||
-                lockedstakes[lockedstakes.length - 1].ending_timestamp == 0
+                // check if we have spare staking tokens to lock (keeping necessary amount to satisfy withdrawals)
+                IConvexWrapper(stakingToken).balanceOf(address(this)) >
+                totalRequestedWithdrawals
             ) {
-                IFraxFarmERC20(fraxPool).stakeLocked(wrappedBalance, duration);
-            } else {
+                uint256 wrappedBalance = IConvexWrapper(stakingToken).balanceOf(
+                    address(this)
+                ) - totalRequestedWithdrawals;
+
+                IERC20MetadataUpgradeable(stakingToken).safeIncreaseAllowance(
+                    fraxPool,
+                    wrappedBalance
+                );
                 IFraxFarmERC20(fraxPool).lockAdditional(
+                    lockedstakes[lockedstakes.length - 1].kek_id,
+                    wrappedBalance
+                );
+                emit LockedAdditional(
                     lockedstakes[lockedstakes.length - 1].kek_id,
                     wrappedBalance
                 );
@@ -560,17 +583,16 @@ contract AlluoConvexVaultNative is
         uint256 newUnsatisfiedWithdrawals;
         if (withdrawalqueue.length != 0) {
             for (uint256 i = withdrawalqueue.length; i > 0; i--) {
-                uint256 requestedAmount = userWithdrawals[
+                Shareholder memory shareholder = userWithdrawals[
                     withdrawalqueue[i - 1]
-                ].withdrawalRequested;
+                ];
+                uint256 requestedAmount = shareholder.withdrawalRequested;
                 _distributeReward(withdrawalqueue[i - 1]);
                 _burn(withdrawalqueue[i - 1], previewWithdraw(requestedAmount));
                 newUnsatisfiedWithdrawals += requestedAmount; // to calculate remainings to lock
                 totalRequestedWithdrawals += requestedAmount; // to balance out totalAssets()
-                userWithdrawals[withdrawalqueue[i - 1]]
-                    .withdrawalAvailable += requestedAmount;
-                userWithdrawals[withdrawalqueue[i - 1]]
-                    .withdrawalRequested -= requestedAmount;
+                shareholder.withdrawalAvailable += requestedAmount;
+                shareholder.withdrawalRequested -= requestedAmount;
                 withdrawalqueue.pop();
             }
         }
@@ -608,10 +630,11 @@ contract AlluoConvexVaultNative is
                 if (remainingsToLock > 0) {
                     IERC20MetadataUpgradeable(stakingToken)
                         .safeIncreaseAllowance(fraxPool, remainingsToLock);
-                    IFraxFarmERC20(fraxPool).stakeLocked(
+                    bytes32 kek_id = IFraxFarmERC20(fraxPool).stakeLocked(
                         remainingsToLock,
                         duration
                     );
+                    emit StakeLocked(kek_id, remainingsToLock, duration);
                 }
             }
         }
