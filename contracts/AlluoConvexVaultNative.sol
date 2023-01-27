@@ -83,7 +83,6 @@ contract AlluoConvexVaultNative is
     }
 
     struct Shareholder {
-        uint256 id;
         uint256 withdrawalRequested;
         uint256 withdrawalAvailable;
     }
@@ -355,34 +354,75 @@ contract AlluoConvexVaultNative is
         userRewardPaid[account] = rewardsPerShareAccumulated;
     }
 
-    /// @notice Puts a withdrawal request to be satisfied after the next farming cycle
-    /// @dev Called by withdraw() and redeem()
-    function _withdraw(
-        address caller,
-        address receiver,
-        address owner,
+    /// @notice Puts a withdrawal request of exact assets to be satisfied after the next farming cycle
+    /// @dev Overrides ERC4626 `withdraw()`
+    /// @param assets amount of assets to be withdrawn
+    /// @param receiver receiver is the same as owner in this case
+    /// @param owner owner of shares
+    /// @return shares amount of shares to be burnt when funds are unlocked
+    function withdraw(
         uint256 assets,
-        uint256 shares
-    ) internal virtual override {
-        _distributeReward(_msgSender());
-        if (caller != owner) {
-            _spendAllowance(owner, caller, shares);
-        }
+        address receiver,
+        address owner
+    ) public override returns (uint256 shares) {
+        require(assets > 0, "AlluoVault: zero withdrawal");
+
         // `withdrawalRequested` is the amount of assets already requested for withdrawal but not yet claimed
         // We should check if the amount already requested plus the new request is not more than a user's deposit
         require(
             userWithdrawals[owner].withdrawalRequested + assets <=
-                previewRedeem(maxRedeem(owner))
+                maxWithdraw(owner),
+            "AlluoVault: withdraw over max"
         );
-        // `id` is needed to handle requested withdrawals when Vault shares are transferred
+
+        // _distributeReward(_msgSender()); // moved to _processWithdrawalRequests()
+
+        shares = previewWithdraw(assets);
+        if (_msgSender() != owner) {
+            _spendAllowance(owner, _msgSender(), shares);
+        }
+
         // `withdrawalqueue` is needed to go through a loop in `_processWithdrawalRequests()` and sum all requests to keep necessary amount of LPs on the contract
         if (userWithdrawals[owner].withdrawalRequested == 0) {
             withdrawalqueue.push(owner);
-            userWithdrawals[owner].id = withdrawalqueue.length; // will alsways be > 0
         }
         // `withdrawalRequested` cannot be decreased, user can only add to the amount already requested
         userWithdrawals[owner].withdrawalRequested += assets;
-        emit Withdraw(caller, receiver, owner, assets, shares);
+        emit Withdraw(_msgSender(), receiver, owner, assets, shares);
+    }
+
+    /// @notice Puts a withdrawal request of exact shares to be satisfied after the next farming cycle
+    /// @dev Overrides ERC4626 `redeem()`
+    /// @param shares amount of shares to be burnt when funds are unlocked
+    /// @param receiver receiver is the same as owner in this case
+    /// @param owner owner of the shares
+    /// @return assets amount of assets to be claimed once funds are unlocked
+    function redeem(
+        uint256 shares,
+        address receiver,
+        address owner
+    ) public override returns (uint256 assets) {
+        assets = previewRedeem(shares);
+        require(assets > 0, "AlluoVault: zero withdrawal");
+        require(
+            userWithdrawals[owner].withdrawalRequested + assets <=
+                previewRedeem(maxRedeem(owner)),
+            "AlluoVault: redeem over max"
+        );
+
+        if (_msgSender() != owner) {
+            _spendAllowance(owner, _msgSender(), shares);
+        }
+        // `withdrawalRequested` is the amount of assets already requested for withdrawal but not yet claimed
+        // We should check if the amount already requested plus the new request is not more than a user's deposit
+
+        // `withdrawalqueue` is needed to go through a loop in `_processWithdrawalRequests()` and sum all requests to keep necessary amount of LPs on the contract
+        if (userWithdrawals[owner].withdrawalRequested == 0) {
+            withdrawalqueue.push(owner);
+        }
+        // `withdrawalRequested` cannot be decreased, user can only add to the amount already requested
+        userWithdrawals[owner].withdrawalRequested += assets;
+        emit Withdraw(_msgSender(), receiver, owner, assets, shares);
     }
 
     /// @notice Claims the unlocked funds previously requested for withdrawal
@@ -397,7 +437,11 @@ contract AlluoConvexVaultNative is
         amount = userWithdrawals[receiver].withdrawalAvailable;
         if (amount > 0) {
             totalRequestedWithdrawals -= amount;
-            delete userWithdrawals[receiver];
+            if (userWithdrawals[receiver].withdrawalRequested == 0) {
+                delete userWithdrawals[receiver];
+            } else {
+                userWithdrawals[receiver].withdrawalAvailable = 0;
+            }
             IConvexWrapper(stakingToken).withdrawAndUnwrap(amount);
             if (exitToken == 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE) {
                 IERC20MetadataUpgradeable(asset()).safeIncreaseAllowance(
@@ -519,6 +563,7 @@ contract AlluoConvexVaultNative is
                 uint256 requestedAmount = userWithdrawals[
                     withdrawalqueue[i - 1]
                 ].withdrawalRequested;
+                _distributeReward(withdrawalqueue[i - 1]);
                 _burn(withdrawalqueue[i - 1], previewWithdraw(requestedAmount));
                 newUnsatisfiedWithdrawals += requestedAmount; // to calculate remainings to lock
                 totalRequestedWithdrawals += requestedAmount; // to balance out totalAssets()
@@ -649,6 +694,22 @@ contract AlluoConvexVaultNative is
                 );
     }
 
+    function transferFrom(
+        address from,
+        address to,
+        uint256 amount
+    ) public override(ERC20Upgradeable) returns (bool) {
+        address spender = _msgSender();
+        require(
+            amount <=
+                balanceOf(from) - userWithdrawals[from].withdrawalRequested,
+            "AlluoVault: amount > unlocked balance"
+        );
+        _spendAllowance(from, spender, amount);
+        _transfer(from, to, amount);
+        return true;
+    }
+
     function _beforeTokenTransfer(
         address from,
         address to,
@@ -656,28 +717,6 @@ contract AlluoConvexVaultNative is
     ) internal virtual override {
         _distributeReward(from);
         _distributeReward(to);
-        // the logic below handles the changes to be made in `userWithdrawals` mapping when shares are tranferred
-        if (
-            userWithdrawals[from].withdrawalRequested != 0 && to != address(0)
-        ) {
-            userWithdrawals[to].withdrawalRequested += userWithdrawals[from]
-                .withdrawalRequested;
-            // remove old owner from withdrawalqueue
-            uint256 ownerId = userWithdrawals[from].id;
-            withdrawalqueue[ownerId - 1] = withdrawalqueue[
-                withdrawalqueue.length - 1
-            ];
-            userWithdrawals[withdrawalqueue[ownerId - 1]].id = ownerId;
-            withdrawalqueue.pop();
-
-            // add new owner to withdrawal queue if they are not there already
-            if (userWithdrawals[to].id == 0) {
-                withdrawalqueue.push(to);
-                userWithdrawals[to].id = withdrawalqueue.length;
-            }
-
-            delete userWithdrawals[from];
-        }
         super._beforeTokenTransfer(from, to, amount);
     }
 

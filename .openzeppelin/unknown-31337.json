@@ -778,7 +778,7 @@
     },
     {
       "address": "0xd038A2EE73b64F30d65802Ad188F27921656f28F",
-      "txHash": "0x7d8543bf4e2de3326978439887135bf3ec588cfd528a65918b4ad423557f0ddd",
+      "txHash": "0x0c7862c46a8e9e6f10cfe8efe64ac62b98c36a0fabef5d24d3d72cbdba94e5f2",
       "kind": "uups"
     }
   ],
@@ -2317,9 +2317,9 @@
         }
       }
     },
-    "66636c6897e0893ed1e6e6c28ff83b766bd3163b14e63488c3c4873d978b8be8": {
+    "1ff3b76b50c367c45f5f144d04ce506eec50bf0edf195065248dd4c1bdd0fc01": {
       "address": "0x01cf58e264d7578D4C67022c58A24CbC4C4a304E",
-      "txHash": "0x8ac5f0f97dbae8420fe86630c4ae3561c6b9a37375cb10f5c6cb14c496bf2f89",
+      "txHash": "0x30c669fbad62df5afae4d49c8d0a899cc60e9b5d0bcf7aa0394f0afa2f2c8375",
       "layout": {
         "solcVersion": "0.8.11",
         "storage": [
@@ -2480,7 +2480,7 @@
             "label": "userWithdrawals",
             "offset": 0,
             "slot": "353",
-            "type": "t_mapping(t_address,t_struct(Shareholder)5482_storage)",
+            "type": "t_mapping(t_address,t_struct(Shareholder)5480_storage)",
             "contract": "AlluoConvexVaultNative",
             "src": "contracts/AlluoConvexVaultNative.sol:100"
           },
@@ -2646,7 +2646,7 @@
             "label": "mapping(address => mapping(address => uint256))",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_address,t_struct(Shareholder)5482_storage)": {
+          "t_mapping(t_address,t_struct(Shareholder)5480_storage)": {
             "label": "mapping(address => struct AlluoConvexVaultNative.Shareholder)",
             "numberOfBytes": "32"
           },
@@ -2714,29 +2714,23 @@
             ],
             "numberOfBytes": "64"
           },
-          "t_struct(Shareholder)5482_storage": {
+          "t_struct(Shareholder)5480_storage": {
             "label": "struct AlluoConvexVaultNative.Shareholder",
             "members": [
               {
-                "label": "id",
+                "label": "withdrawalRequested",
                 "type": "t_uint256",
                 "offset": 0,
                 "slot": "0"
               },
               {
-                "label": "withdrawalRequested",
-                "type": "t_uint256",
-                "offset": 0,
-                "slot": "1"
-              },
-              {
                 "label": "withdrawalAvailable",
                 "type": "t_uint256",
                 "offset": 0,
-                "slot": "2"
+                "slot": "1"
               }
             ],
-            "numberOfBytes": "96"
+            "numberOfBytes": "64"
           },
           "t_uint256": {
             "label": "uint256",

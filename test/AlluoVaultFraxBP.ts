@@ -230,7 +230,8 @@ describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
         expect(await AlluoVault.balanceOf(signers[0].address)).to.be.eq(lpBalance);
         await skipDays(8);
         await AlluoVault.loopRewards();
-        console.log("Withdrawal queue length", AlluoVault.withdrawalqueue.length);
+        expect(AlluoVault.withdrawalqueue.length).to.be.eq(0)
+        console.log("Checked: withdrawal queue should be zero: ", AlluoVault.withdrawalqueue.length);
 
         expect(await AlluoVault.balanceOf(signers[0].address)).to.be.eq(lpBalance.div(2));
         expect(await stakingToken.balanceOf(AlluoVault.address)).to.be.eq(lpBalance.div(2));
@@ -378,7 +379,7 @@ describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
 
     })
 
-    it("Multiple deposits and withdrawals should return correct LP amounts", async function () {
+    it.only("Multiple deposits and withdrawals should return correct LP amounts", async function () {
         let signerBalancesBefore = []
         let signerExitTokenBefore = []
         const exitToken = usdc;
