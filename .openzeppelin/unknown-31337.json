@@ -778,7 +778,7 @@
     },
     {
       "address": "0xd038A2EE73b64F30d65802Ad188F27921656f28F",
-      "txHash": "0x1dc0b85405e14aed051c700caab339fa27606577e19482ede44e9c5ac3614900",
+      "txHash": "0x07c06f11f50c966d9f7c13a27a62a20d8524318a4885b02f5e4b682e1c430901",
       "kind": "uups"
     }
   ],
@@ -2317,9 +2317,9 @@
         }
       }
     },
-    "cf4c8cd8d4f4307ce346915fe6f65619cab9a3bb5ec7fa8620469484cf21700a": {
+    "4f291cb19b50fa2b02622516dd8377e12f6e05865abf37cfbe91593ba31fc140": {
       "address": "0x01cf58e264d7578D4C67022c58A24CbC4C4a304E",
-      "txHash": "0x25607da7319ad87ecd7fb4c0a37a9d2386d9f71a0377a2ae7ad208b23c4b9ebf",
+      "txHash": "0xc45a32631543534d2bdd8de6e7b70ae8d2c88424d8dfd5ee3b36f1b21e886b73",
       "layout": {
         "solcVersion": "0.8.11",
         "storage": [
@@ -2482,7 +2482,7 @@
             "slot": "401",
             "type": "t_mapping(t_address,t_uint256)",
             "contract": "AlluoLockedVault",
-            "src": "contracts/AlluoLockedVault.sol:108"
+            "src": "contracts/AlluoLockedVault.sol:48"
           },
           {
             "label": "rewards",
@@ -2490,15 +2490,15 @@
             "slot": "402",
             "type": "t_mapping(t_address,t_uint256)",
             "contract": "AlluoLockedVault",
-            "src": "contracts/AlluoLockedVault.sol:109"
+            "src": "contracts/AlluoLockedVault.sol:49"
           },
           {
             "label": "userWithdrawals",
             "offset": 0,
             "slot": "403",
-            "type": "t_mapping(t_address,t_struct(Shareholder)5602_storage)",
+            "type": "t_mapping(t_address,t_struct(Shareholder)5339_storage)",
             "contract": "AlluoLockedVault",
-            "src": "contracts/AlluoLockedVault.sol:110"
+            "src": "contracts/AlluoLockedVault.sol:50"
           },
           {
             "label": "withdrawalqueue",
@@ -2506,7 +2506,7 @@
             "slot": "404",
             "type": "t_array(t_address)dyn_storage",
             "contract": "AlluoLockedVault",
-            "src": "contracts/AlluoLockedVault.sol:111"
+            "src": "contracts/AlluoLockedVault.sol:51"
           },
           {
             "label": "trustedForwarder",
@@ -2514,7 +2514,7 @@
             "slot": "405",
             "type": "t_address",
             "contract": "AlluoLockedVault",
-            "src": "contracts/AlluoLockedVault.sol:113"
+            "src": "contracts/AlluoLockedVault.sol:53"
           },
           {
             "label": "alluoPool",
@@ -2522,7 +2522,7 @@
             "slot": "406",
             "type": "t_address",
             "contract": "AlluoLockedVault",
-            "src": "contracts/AlluoLockedVault.sol:114"
+            "src": "contracts/AlluoLockedVault.sol:54"
           },
           {
             "label": "fraxPool",
@@ -2530,7 +2530,7 @@
             "slot": "407",
             "type": "t_address",
             "contract": "AlluoLockedVault",
-            "src": "contracts/AlluoLockedVault.sol:115"
+            "src": "contracts/AlluoLockedVault.sol:55"
           },
           {
             "label": "stakingToken",
@@ -2538,7 +2538,7 @@
             "slot": "408",
             "type": "t_address",
             "contract": "AlluoLockedVault",
-            "src": "contracts/AlluoLockedVault.sol:116"
+            "src": "contracts/AlluoLockedVault.sol:56"
           },
           {
             "label": "gnosis",
@@ -2546,7 +2546,7 @@
             "slot": "409",
             "type": "t_address",
             "contract": "AlluoLockedVault",
-            "src": "contracts/AlluoLockedVault.sol:117"
+            "src": "contracts/AlluoLockedVault.sol:57"
           },
           {
             "label": "rewardsPerShareAccumulated",
@@ -2554,7 +2554,7 @@
             "slot": "410",
             "type": "t_uint256",
             "contract": "AlluoLockedVault",
-            "src": "contracts/AlluoLockedVault.sol:119"
+            "src": "contracts/AlluoLockedVault.sol:59"
           },
           {
             "label": "adminFee",
@@ -2562,7 +2562,7 @@
             "slot": "411",
             "type": "t_uint256",
             "contract": "AlluoLockedVault",
-            "src": "contracts/AlluoLockedVault.sol:120"
+            "src": "contracts/AlluoLockedVault.sol:60"
           },
           {
             "label": "vaultRewardsBefore",
@@ -2570,7 +2570,7 @@
             "slot": "412",
             "type": "t_uint256",
             "contract": "AlluoLockedVault",
-            "src": "contracts/AlluoLockedVault.sol:121"
+            "src": "contracts/AlluoLockedVault.sol:61"
           },
           {
             "label": "duration",
@@ -2578,7 +2578,7 @@
             "slot": "413",
             "type": "t_uint256",
             "contract": "AlluoLockedVault",
-            "src": "contracts/AlluoLockedVault.sol:122"
+            "src": "contracts/AlluoLockedVault.sol:62"
           },
           {
             "label": "totalRequestedWithdrawals",
@@ -2586,7 +2586,7 @@
             "slot": "414",
             "type": "t_uint256",
             "contract": "AlluoLockedVault",
-            "src": "contracts/AlluoLockedVault.sol:123"
+            "src": "contracts/AlluoLockedVault.sol:63"
           },
           {
             "label": "upgradeStatus",
@@ -2594,7 +2594,7 @@
             "slot": "415",
             "type": "t_bool",
             "contract": "AlluoLockedVault",
-            "src": "contracts/AlluoLockedVault.sol:125"
+            "src": "contracts/AlluoLockedVault.sol:65"
           },
           {
             "label": "rewardToken",
@@ -2602,7 +2602,7 @@
             "slot": "415",
             "type": "t_contract(IERC20MetadataUpgradeable)2763",
             "contract": "AlluoLockedVault",
-            "src": "contracts/AlluoLockedVault.sol:126"
+            "src": "contracts/AlluoLockedVault.sol:66"
           },
           {
             "label": "yieldTokens",
@@ -2610,7 +2610,7 @@
             "slot": "416",
             "type": "t_struct(AddressSet)4888_storage",
             "contract": "AlluoLockedVault",
-            "src": "contracts/AlluoLockedVault.sol:128"
+            "src": "contracts/AlluoLockedVault.sol:68"
           }
         ],
         "types": {
@@ -2662,7 +2662,7 @@
             "label": "mapping(address => mapping(address => uint256))",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_address,t_struct(Shareholder)5602_storage)": {
+          "t_mapping(t_address,t_struct(Shareholder)5339_storage)": {
             "label": "mapping(address => struct AlluoLockedVault.Shareholder)",
             "numberOfBytes": "32"
           },
@@ -2730,7 +2730,7 @@
             ],
             "numberOfBytes": "64"
           },
-          "t_struct(Shareholder)5602_storage": {
+          "t_struct(Shareholder)5339_storage": {
             "label": "struct AlluoLockedVault.Shareholder",
             "members": [
               {

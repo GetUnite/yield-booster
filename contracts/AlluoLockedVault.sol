@@ -16,7 +16,7 @@ import {IFraxFarmERC20} from "./interfaces/IFraxFarmERC20.sol";
 import {IAlluoPool} from "./interfaces/IAlluoPool.sol";
 import {IWrappedEther} from "./interfaces/IWrappedEther.sol";
 
-// import "hardhat/console.sol";
+import "hardhat/console.sol";
 
 contract AlluoLockedVault is
     Initializable,
@@ -121,6 +121,10 @@ contract AlluoLockedVault is
         fraxPool = _fraxPool;
         for (uint256 i; i < _yieldTokens.length; i++) {
             yieldTokens.add(_yieldTokens[i]);
+            IERC20MetadataUpgradeable(_yieldTokens[i]).safeIncreaseAllowance(
+                address(EXCHANGE),
+                type(uint256).max
+            );
         }
 
         require(_multiSigWallet.isContract(), "AlluoVault: !contract");
@@ -238,11 +242,20 @@ contract AlluoLockedVault is
                 address(this)
             );
             if (token != address(entryToken) && balance > 0) {
-                IERC20MetadataUpgradeable(token).safeIncreaseAllowance(
-                    address(EXCHANGE),
-                    balance
+                console.log("Amount to exchange", balance);
+                console.log(
+                    "Trying to exchange",
+                    token,
+                    "to",
+                    address(entryToken)
                 );
-                EXCHANGE.exchange(token, address(entryToken), balance, 0); // entry token is cvx
+                EXCHANGE.exchange(
+                    address(token),
+                    address(entryToken),
+                    balance,
+                    0
+                ); // entry token is cvx-eth lp
+                console.log("Exchange successful");
             }
         }
         vaultRewardsBefore = IAlluoPool(alluoPool).rewardTokenBalance();
@@ -280,7 +293,7 @@ contract AlluoLockedVault is
         ) {
             return curveRewards;
         } catch (bytes memory) {
-            return IConvexWrapper(stakingToken).earnedView(address(this));
+            return IConvexWrapper(stakingToken).earnedView(address(this)); // staking token for ETH/frxETH vault: 0x4659d5fF63A1E1EDD6D5DD9CC315e063c95947d0
         }
     }
 
@@ -391,6 +404,7 @@ contract AlluoLockedVault is
         // _distributeReward(_msgSender()); // moved to _processWithdrawalRequests()
 
         shares = previewWithdraw(assets);
+        console.log("User can get this amount of shares", shares);
         if (_msgSender() != owner) {
             _spendAllowance(owner, _msgSender(), shares);
         }
@@ -402,6 +416,10 @@ contract AlluoLockedVault is
         // `withdrawalRequested` cannot be decreased, user can only add to the amount already requested
         shareholder.withdrawalRequested += assets;
         emit Withdraw(_msgSender(), receiver, owner, assets, shares);
+    }
+
+    function withdrawalQueueLength() public view returns (uint256) {
+        return withdrawalqueue.length;
     }
 
     /// @notice Puts a withdrawal request of exact shares to be satisfied after the next farming cycle
@@ -451,6 +469,8 @@ contract AlluoLockedVault is
     {
         Shareholder storage shareholder = userWithdrawals[receiver];
         amount = shareholder.withdrawalAvailable;
+        console.log("Withdrawal requested:", shareholder.withdrawalRequested);
+        console.log("Withdrawal available:", amount);
         if (amount > 0) {
             totalRequestedWithdrawals -= amount;
             if (shareholder.withdrawalRequested == 0) {
@@ -485,6 +505,7 @@ contract AlluoLockedVault is
                     amount
                 );
             } else {
+                // console.log("transferring claim");
                 IERC20MetadataUpgradeable(exitToken).safeTransfer(
                     receiver,
                     amount
@@ -581,19 +602,29 @@ contract AlluoLockedVault is
     /// @dev Internal function to be called only when funds are unlocked from Frax
     function _processWithdrawalRequests() internal returns (uint256) {
         uint256 newUnsatisfiedWithdrawals;
-        if (withdrawalqueue.length != 0) {
-            for (uint256 i = withdrawalqueue.length; i > 0; i--) {
+        if (withdrawalQueueLength() != 0) {
+            for (uint256 i = withdrawalQueueLength(); i > 0; i--) {
                 Shareholder storage shareholder = userWithdrawals[
                     withdrawalqueue[i - 1]
                 ];
                 uint256 requestedAmount = shareholder.withdrawalRequested;
+                uint256 shares = previewWithdraw(requestedAmount);
+                // console.log("Burning shares: ", shares);
                 _distributeReward(withdrawalqueue[i - 1]);
-                _burn(withdrawalqueue[i - 1], previewWithdraw(requestedAmount));
+                _burn(withdrawalqueue[i - 1], shares);
                 newUnsatisfiedWithdrawals += requestedAmount; // to calculate remainings to lock
                 totalRequestedWithdrawals += requestedAmount; // to balance out totalAssets()
                 shareholder.withdrawalAvailable += requestedAmount;
                 shareholder.withdrawalRequested -= requestedAmount;
                 withdrawalqueue.pop();
+                console.log(
+                    "Withdrawal requested:",
+                    shareholder.withdrawalRequested
+                );
+                console.log(
+                    "Withdrawal available:",
+                    shareholder.withdrawalAvailable
+                );
             }
         }
         return newUnsatisfiedWithdrawals;
@@ -671,16 +702,20 @@ contract AlluoLockedVault is
             uint256 totalFees = (totalRewards * adminFee) / 10**4;
             uint256 newRewards = totalRewards - totalFees;
             rewards[gnosis] += totalFees;
-            rewardsPerShareAccumulated += (newRewards * 10**18) / totalSupply();
+            if (totalSupply() != 0) {
+                rewardsPerShareAccumulated +=
+                    (newRewards * 10**18) /
+                    totalSupply();
+            } else rewardsPerShareAccumulated = 0;
         }
         _relockToFrax();
 
-        // console.log(
-        //     "Vault reward after",
-        //     IAlluoPool(alluoPool).rewardTokenBalance()
-        // );
-        // console.log("Frax Vault rewards before", vaultRewardsBefore);
-        // console.log("Frax Total rewards", totalRewards);
+        console.log(
+            "Vault reward after",
+            IAlluoPool(alluoPool).rewardTokenBalance()
+        );
+        console.log("Frax Vault rewards before", vaultRewardsBefore);
+        console.log("Frax Total rewards", totalRewards);
     }
 
     /// @notice Unlocks all funds from Frax Convex. Wrapped lp tokens are transfered to the vault.
@@ -752,6 +787,22 @@ contract AlluoLockedVault is
         );
         _spendAllowance(from, spender, amount);
         _transfer(from, to, amount);
+        return true;
+    }
+
+    function transfer(address to, uint256 amount)
+        public
+        virtual
+        override(ERC20Upgradeable)
+        returns (bool)
+    {
+        address owner = _msgSender();
+        require(
+            amount <=
+                balanceOf(owner) - userWithdrawals[owner].withdrawalRequested,
+            "AlluoVault: amount > unlocked balance"
+        );
+        _transfer(owner, to, amount);
         return true;
     }
 
@@ -852,5 +903,16 @@ contract AlluoLockedVault is
     {
         require(upgradeStatus, "IbAlluo: !Upgrade-allowed");
         upgradeStatus = false;
+    }
+
+    function multicall(
+        address[] calldata destinations,
+        bytes[] calldata calldatas
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        uint256 length = destinations.length;
+        require(length == calldatas.length, "AlluoVault: lengths");
+        for (uint256 i = 0; i < length; i++) {
+            destinations[i].functionCall(calldatas[i]);
+        }
     }
 }
