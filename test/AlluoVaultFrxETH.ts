@@ -336,29 +336,6 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
         expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(2)
     })
 
-
-    it("First lock should only happen after first calling stakeUnderlying(), then farm()", async function () {
-        const amount = parseEther("10.0");
-        const lpBalance = makeEvenNumber(await ethFrxEthLp.balanceOf(signers[0].address));
-        await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
-        await AlluoVault.deposit(lpBalance.div(2), signers[0].address);
-        await alluoPool.connect(admin).farm();
-        expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(0);
-        await AlluoVault.stakeUnderlying();
-        expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(0);
-
-        // await exchange.exchange(
-        //     ZERO_ADDR, cvx.address, amount, 0, { value: amount }
-        // )
-        // // to avoid devision by zero
-        // await cvx.transfer(alluoPool.address, amount.div(2));
-        // await cvx.transfer(AlluoVault.address, amount.div(2));
-
-        await alluoPool.connect(admin).farm();
-        expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(1);
-    })
-
-
     it("Should satisfy users' withdrawals in the next cycle after request. Should have 5 kek_ids after 5 cycles.", async function () {
 
         const amount = parseEther("10.0");
@@ -611,12 +588,38 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
         await AlluoVault.withdraw(amount, signers[0].address, signers[0].address);
         await alluoPool.connect(admin).farm();
 
+        await alluoPool.connect(admin).farm(); // should just return without 
+
         const balanceBefore = await ethFrxEthLp.balanceOf(signers[0].address);
         await AlluoVault.claim(ethFrxEthLp.address, signers[0].address);
         expect(await AlluoVault.balanceOf(signers[0].address)).to.be.eq(amount.mul(2));
         expect(await ethFrxEthLp.balanceOf(signers[0].address)).to.be.eq(balanceBefore);
         expect(await (await AlluoVault.userWithdrawals(signers[0].address)).withdrawalAvailable).to.be.eq(0);
         expect(await (await AlluoVault.userWithdrawals(signers[0].address)).withdrawalRequested).to.be.eq(amount);
+
+    })
+
+    it("Should just wrap lps if stake is still locked in frax ", async function () {
+        const amount = parseEther("10");
+        await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
+        await AlluoVault.deposit(amount.mul(2), signers[0].address);
+        await AlluoVault.stakeUnderlying();
+        await AlluoVault.withdraw(amount, signers[0].address, signers[0].address);
+        await alluoPool.connect(admin).farm();
+        await AlluoVault.deposit(amount, signers[0].address);
+        await alluoPool.connect(admin).farm();
+
+        expect(await ethFrxEthLp.balanceOf(AlluoVault.address)).to.be.eq(0);
+        expect(await stakingToken.balanceOf(AlluoVault.address)).to.be.eq(amount);
+        expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(1);
+
+    })
+
+    it("Should check what there's no lock when farming with totalSupply == 0", async function () {
+
+        await AlluoVault.stakeUnderlying();
+        await alluoPool.connect(admin).farm();
+        expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(0);
 
     })
 
@@ -632,8 +635,10 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
 
         await skipDays(8);
         await alluoPool.connect(admin).farm();
+        await AlluoVault.withdraw(amount, signers[0].address, signers[0].address); // to check that the user will not be deleted from userWithdrawals mapping
         const balanceBefore = await ethFrxEthLp.balanceOf(signers[0].address);
         await AlluoVault.claim(ethFrxEthLp.address, signers[0].address);
+        expect(await (await AlluoVault.userWithdrawals(signers[0].address)).withdrawalRequested).to.be.eq(amount);
         expect(await AlluoVault.balanceOf(signers[0].address)).to.be.eq(amount);
         expect(await AlluoVault.lockedBalance()).to.be.eq(amount);
         expect(await ethFrxEthLp.balanceOf(signers[0].address)).to.be.eq(balanceBefore.add(amount))
@@ -647,7 +652,9 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
         await AlluoVault.stakeUnderlying();
         await alluoPool.connect(admin).farm();
 
-        await AlluoVault.redeem(amount, signers[0].address, signers[0].address);
+        // test increasing redeeming amount
+        await AlluoVault.redeem(amount.div(2), signers[0].address, signers[0].address);
+        await AlluoVault.redeem(amount.div(2), signers[0].address, signers[0].address);
         expect(await AlluoVault.balanceOf(signers[0].address)).to.be.eq(amount.mul(2)); // balance is still > 0 before farm()
 
         await skipDays(8);
@@ -668,6 +675,10 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
         await alluoPool.connect(admin).farm();
 
         await skipDays(8);
+
+        // check require statements for redeem()
+        await expect(AlluoVault.redeem(0, signers[0].address, signers[0].address)).to.be.revertedWith("AlluoVault: zero withdrawal");
+        await expect(AlluoVault.redeem(lpBalance, signers[0].address, signers[0].address)).to.be.revertedWith("AlluoVault: redeem over max");
 
         const ownerBalanceBefore = await frax.balanceOf(signers[0].address);
         await AlluoVault.increaseAllowance(signers[1].address, lpBalance.div(2));
@@ -891,6 +902,7 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
 
             await AlluoVault.stakeUnderlying();
             await alluoPool.connect(admin).farm();
+            await expect(AlluoVault.unlockUserFunds()).to.be.revertedWith("AlluoVault: funds locked");
             await skipDays(10);
 
             console.log("\n----------before second farm--------------\n")

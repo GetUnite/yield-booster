@@ -2317,9 +2317,9 @@
         }
       }
     },
-    "d89b042fd5bbd19513c50b85093f89edd7edda5c95e60c8e40131b640d3bce92": {
+    "ffc79b89cc0ce1e4c9a56e6648e334de2927074a1379c4469e7b75e48d7ef69d": {
       "address": "0x01cf58e264d7578D4C67022c58A24CbC4C4a304E",
-      "txHash": "0xfe34aae35d5427b6b4b070e42940b569b31879d6be6caa64ca895845951394af",
+      "txHash": "0x372229ac604d788e6aa90deef8de4f74a18661b8b030efe943eb9af5c7887d74",
       "layout": {
         "solcVersion": "0.8.11",
         "storage": [

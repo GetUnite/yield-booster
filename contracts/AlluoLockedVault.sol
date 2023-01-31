@@ -394,7 +394,7 @@ contract AlluoLockedVault is
     ) public override returns (uint256 shares) {
         require(assets > 0, "AlluoVault: zero withdrawal");
 
-        Shareholder storage shareholder = userWithdrawals[owner];
+        Shareholder memory shareholder = userWithdrawals[owner];
 
         // `withdrawalRequested` is the amount of assets already requested for withdrawal but not yet claimed
         // We should check if the amount already requested plus the new request is not more than a user's deposit
@@ -403,10 +403,7 @@ contract AlluoLockedVault is
             "AlluoVault: withdraw over max"
         );
 
-        // _distributeReward(_msgSender()); // moved to _processWithdrawalRequests()
-
         shares = previewWithdraw(assets);
-        console.log("User can get this amount of shares", shares);
         if (_msgSender() != owner) {
             _spendAllowance(owner, _msgSender(), shares);
         }
@@ -416,7 +413,7 @@ contract AlluoLockedVault is
             withdrawalqueue.push(owner);
         }
         // `withdrawalRequested` cannot be decreased, user can only add to the amount already requested
-        shareholder.withdrawalRequested += assets;
+        userWithdrawals[owner].withdrawalRequested += assets;
         emit Withdraw(_msgSender(), receiver, owner, assets, shares);
     }
 
@@ -437,7 +434,7 @@ contract AlluoLockedVault is
     ) public override returns (uint256 assets) {
         assets = previewRedeem(shares);
         require(assets > 0, "AlluoVault: zero withdrawal");
-        Shareholder storage shareholder = userWithdrawals[owner];
+        Shareholder memory shareholder = userWithdrawals[owner];
         require(
             shareholder.withdrawalRequested + assets <=
                 previewRedeem(maxRedeem(owner)),
@@ -455,7 +452,7 @@ contract AlluoLockedVault is
             withdrawalqueue.push(owner);
         }
         // `withdrawalRequested` cannot be decreased, user can only add to the amount already requested
-        shareholder.withdrawalRequested += assets;
+        userWithdrawals[owner].withdrawalRequested += assets;
         emit Withdraw(_msgSender(), receiver, owner, assets, shares);
     }
 
@@ -469,7 +466,7 @@ contract AlluoLockedVault is
         nonReentrant
         returns (uint256 amount)
     {
-        Shareholder storage shareholder = userWithdrawals[msg.sender];
+        Shareholder memory shareholder = userWithdrawals[msg.sender];
         amount = shareholder.withdrawalAvailable;
         console.log("Withdrawal requested:", shareholder.withdrawalRequested);
         console.log("Withdrawal available:", amount);
@@ -478,10 +475,10 @@ contract AlluoLockedVault is
             if (shareholder.withdrawalRequested == 0) {
                 delete userWithdrawals[msg.sender];
             } else {
-                shareholder.withdrawalAvailable = 0;
+                userWithdrawals[msg.sender].withdrawalAvailable = 0;
             }
-            console.log("\nUnwrapping staking tokens, balance is:");
-            console.log(IConvexWrapper(stakingToken).balanceOf(address(this)));
+            // console.log("\nUnwrapping staking tokens, balance is:");
+            // console.log(IConvexWrapper(stakingToken).balanceOf(address(this)));
             IConvexWrapper(stakingToken).withdrawAndUnwrap(amount);
             if (exitToken == 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE) {
                 IERC20MetadataUpgradeable(asset()).safeIncreaseAllowance(
@@ -646,6 +643,19 @@ contract AlluoLockedVault is
     /// @notice Unlocks funds from frax convex, keeps enough to satisfy withdrawal claims and locks the remaining back
     /// @dev To be called inside loopRewards() tirggered by Alluo Vault farm()
     function _relockToFrax() internal {
+        // 1. Wrap Lps in the contract if there are any
+        uint256 assets = IERC20MetadataUpgradeable(asset()).balanceOf(
+            address(this)
+        );
+
+        if (assets > 0) {
+            IERC20MetadataUpgradeable(asset()).safeIncreaseAllowance(
+                stakingToken,
+                assets
+            );
+            IConvexWrapper(stakingToken).deposit(assets, address(this));
+        }
+
         IFraxFarmERC20.LockedStake[] memory lockedstakes = IFraxFarmERC20(
             fraxPool
         ).lockedStakesOf(address(this));
@@ -669,20 +679,7 @@ contract AlluoLockedVault is
 
             uint256 newUnsatisfiedWithdrawals = _processWithdrawalRequests();
 
-            // 3. Wrap Lps in the contract if there are any
-            uint256 assets = IERC20MetadataUpgradeable(asset()).balanceOf(
-                address(this)
-            );
-
-            if (assets > 0) {
-                IERC20MetadataUpgradeable(asset()).safeIncreaseAllowance(
-                    stakingToken,
-                    assets
-                );
-                IConvexWrapper(stakingToken).deposit(assets, address(this));
-            }
-
-            // 4. Lock remaining to frax convex
+            // 3. Lock remaining to frax convex
             uint256 remainingsToLock = IERC20MetadataUpgradeable(stakingToken)
                 .balanceOf(address(this)) -
                 previousTotalRequestedWithdrawals -
@@ -772,7 +769,6 @@ contract AlluoLockedVault is
         Shareholder memory shareholder = userWithdrawals[msg.sender];
         uint256 requestedAmount = shareholder.withdrawalRequested;
         uint256 shares = previewWithdraw(requestedAmount);
-        // console.log("Burning shares: ", shares);
         _distributeReward(msg.sender);
         _burn(msg.sender, shares);
         totalRequestedWithdrawals += requestedAmount; // to balance out totalAssets()
@@ -850,30 +846,6 @@ contract AlluoLockedVault is
         _transfer(owner, to, amount);
         return true;
     }
-
-    //     function _transfer(
-    //     address from,
-    //     address to,
-    //     uint256 amount
-    // ) internal virtual {
-    //     require(from != address(0), "ERC20: transfer from the zero address");
-    //     require(to != address(0), "ERC20: transfer to the zero address");
-
-    //     _beforeTokenTransfer(from, to, amount);
-
-    //     uint256 fromBalance = _balances[from];
-    //     require(fromBalance >= amount, "ERC20: transfer amount exceeds balance");
-    //     unchecked {
-    //         _balances[from] = fromBalance - amount;
-    //         // Overflow not possible: the sum of all balances is capped by totalSupply, and the sum is preserved by
-    //         // decrementing then incrementing.
-    //         _balances[to] += amount;
-    //     }
-
-    //     emit Transfer(from, to, amount);
-
-    //     _afterTokenTransfer(from, to, amount);
-    // }
 
     function _beforeTokenTransfer(
         address from,
@@ -970,7 +942,7 @@ contract AlluoLockedVault is
         override
         onlyRole(UPGRADER_ROLE)
     {
-        require(upgradeStatus, "IbAlluo: !Upgrade-allowed");
+        require(upgradeStatus, "AlluoVault: !Upgrade-allowed");
         upgradeStatus = false;
     }
 
