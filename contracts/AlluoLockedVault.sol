@@ -71,8 +71,10 @@ contract AlluoLockedVault is
     event Claim(
         address indexed exitToken,
         uint256 indexed amount,
-        address indexed receiver
+        address indexed owner,
+        address receiver
     );
+
     event ClaimRewards(
         address indexed exitToken,
         uint256 indexed rewardTokens,
@@ -242,20 +244,20 @@ contract AlluoLockedVault is
                 address(this)
             );
             if (token != address(entryToken) && balance > 0) {
-                console.log("Amount to exchange", balance);
-                console.log(
-                    "Trying to exchange",
-                    token,
-                    "to",
-                    address(entryToken)
-                );
+                // console.log("Amount to exchange", balance);
+                // console.log(
+                //     "Trying to exchange",
+                //     token,
+                //     "to",
+                //     address(entryToken)
+                // );
                 EXCHANGE.exchange(
                     address(token),
                     address(entryToken),
                     balance,
                     0
                 ); // entry token is cvx-eth lp
-                console.log("Exchange successful");
+                // console.log("Exchange successful");
             }
         }
         vaultRewardsBefore = IAlluoPool(alluoPool).rewardTokenBalance();
@@ -467,17 +469,19 @@ contract AlluoLockedVault is
         nonReentrant
         returns (uint256 amount)
     {
-        Shareholder storage shareholder = userWithdrawals[receiver];
+        Shareholder storage shareholder = userWithdrawals[msg.sender];
         amount = shareholder.withdrawalAvailable;
         console.log("Withdrawal requested:", shareholder.withdrawalRequested);
         console.log("Withdrawal available:", amount);
         if (amount > 0) {
             totalRequestedWithdrawals -= amount;
             if (shareholder.withdrawalRequested == 0) {
-                delete userWithdrawals[receiver];
+                delete userWithdrawals[msg.sender];
             } else {
                 shareholder.withdrawalAvailable = 0;
             }
+            console.log("\nUnwrapping staking tokens, balance is:");
+            console.log(IConvexWrapper(stakingToken).balanceOf(address(this)));
             IConvexWrapper(stakingToken).withdrawAndUnwrap(amount);
             if (exitToken == 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE) {
                 IERC20MetadataUpgradeable(asset()).safeIncreaseAllowance(
@@ -505,14 +509,13 @@ contract AlluoLockedVault is
                     amount
                 );
             } else {
-                // console.log("transferring claim");
                 IERC20MetadataUpgradeable(exitToken).safeTransfer(
                     receiver,
                     amount
                 );
             }
         }
-        emit Claim(exitToken, amount, receiver);
+        emit Claim(exitToken, amount, msg.sender, receiver);
     }
 
     /// @notice Allows users to claim their rewards in an ERC20 supported by the Alluo exchange
@@ -581,7 +584,11 @@ contract AlluoLockedVault is
                 uint256 wrappedBalance = IConvexWrapper(stakingToken).balanceOf(
                     address(this)
                 ) - totalRequestedWithdrawals;
-
+                console.log(
+                    "\ntotalRequestedWithdrawals",
+                    totalRequestedWithdrawals
+                );
+                console.log("\nwrappedBalance", wrappedBalance);
                 IERC20MetadataUpgradeable(stakingToken).safeIncreaseAllowance(
                     fraxPool,
                     wrappedBalance
@@ -625,9 +632,13 @@ contract AlluoLockedVault is
                     "Withdrawal available:",
                     shareholder.withdrawalAvailable
                 );
+                console.log(
+                    "newUnsatisfiedWithdrawals",
+                    newUnsatisfiedWithdrawals
+                );
             }
+            return newUnsatisfiedWithdrawals;
         }
-        return newUnsatisfiedWithdrawals;
     }
 
     //TODO: add admin function to forse process all requests
@@ -638,32 +649,31 @@ contract AlluoLockedVault is
         IFraxFarmERC20.LockedStake[] memory lockedstakes = IFraxFarmERC20(
             fraxPool
         ).lockedStakesOf(address(this));
-
         if (lockedstakes.length != 0) {
             // we have locked before
-
             // do nothing if funds are still locked
             if (
                 lockedstakes[lockedstakes.length - 1].ending_timestamp >=
                 block.timestamp
             ) return;
-
             // 1. unlock from frax if we have funds locked & unlocking is available
             if (lockedstakes[lockedstakes.length - 1].liquidity != 0) {
                 // we have funds available for unlocking
-
                 IFraxFarmERC20(fraxPool).withdrawLocked(
                     lockedstakes[lockedstakes.length - 1].kek_id,
                     address(this)
                 ); // claims rewards from frax
             }
-
             // 2. Updates userWithdrawals mapping, burns shares of those in the queue and clears withdrawal queue
-            uint256 newUnsatisfiedWithdrawals = _processWithdrawalRequests();
+            uint256 previousTotalRequestedWithdrawals = totalRequestedWithdrawals;
 
+            uint256 newUnsatisfiedWithdrawals = _processWithdrawalRequests();
             // 3. Lock remaining to frax convex
             uint256 remainingsToLock = IERC20MetadataUpgradeable(stakingToken)
-                .balanceOf(address(this)) - newUnsatisfiedWithdrawals;
+                .balanceOf(address(this)) -
+                previousTotalRequestedWithdrawals -
+                newUnsatisfiedWithdrawals;
+            console.log("\nremainingsToLock", remainingsToLock);
 
             if (remainingsToLock > 0) {
                 IERC20MetadataUpgradeable(stakingToken).safeIncreaseAllowance(
@@ -706,7 +716,7 @@ contract AlluoLockedVault is
                 rewardsPerShareAccumulated +=
                     (newRewards * 10**18) /
                     totalSupply();
-            } else rewardsPerShareAccumulated = 0;
+            }
         }
         _relockToFrax();
 
@@ -718,8 +728,7 @@ contract AlluoLockedVault is
         console.log("Frax Total rewards", totalRewards);
     }
 
-    /// @notice Unlocks all funds from Frax Convex. Wrapped lp tokens are transfered to the vault.
-    function unlockFromFraxConvex() external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function _unlockFromFraxConvex() internal {
         IFraxFarmERC20.LockedStake[] memory lockedstakes = IFraxFarmERC20(
             fraxPool
         ).lockedStakesOf(address(this));
@@ -733,6 +742,26 @@ contract AlluoLockedVault is
                 address(this)
             );
         } else return;
+    }
+
+    /// @notice Unlocks all funds from Frax Convex. Wrapped lp tokens are transfered to the vault.
+    function unlockFromFraxConvex() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _unlockFromFraxConvex();
+    }
+
+    function unlockUserFunds() external {
+        _unlockFromFraxConvex();
+
+        // burn shares of the user & update totalWithdrawalRequest
+        Shareholder memory shareholder = userWithdrawals[msg.sender];
+        uint256 requestedAmount = shareholder.withdrawalRequested;
+        uint256 shares = previewWithdraw(requestedAmount);
+        // console.log("Burning shares: ", shares);
+        _distributeReward(msg.sender);
+        _burn(msg.sender, shares);
+        totalRequestedWithdrawals += requestedAmount; // to balance out totalAssets()
+        userWithdrawals[msg.sender].withdrawalAvailable += requestedAmount;
+        userWithdrawals[msg.sender].withdrawalRequested -= requestedAmount;
     }
 
     function totalAssets() public view override returns (uint256) {
@@ -805,6 +834,30 @@ contract AlluoLockedVault is
         _transfer(owner, to, amount);
         return true;
     }
+
+    //     function _transfer(
+    //     address from,
+    //     address to,
+    //     uint256 amount
+    // ) internal virtual {
+    //     require(from != address(0), "ERC20: transfer from the zero address");
+    //     require(to != address(0), "ERC20: transfer to the zero address");
+
+    //     _beforeTokenTransfer(from, to, amount);
+
+    //     uint256 fromBalance = _balances[from];
+    //     require(fromBalance >= amount, "ERC20: transfer amount exceeds balance");
+    //     unchecked {
+    //         _balances[from] = fromBalance - amount;
+    //         // Overflow not possible: the sum of all balances is capped by totalSupply, and the sum is preserved by
+    //         // decrementing then incrementing.
+    //         _balances[to] += amount;
+    //     }
+
+    //     emit Transfer(from, to, amount);
+
+    //     _afterTokenTransfer(from, to, amount);
+    // }
 
     function _beforeTokenTransfer(
         address from,

@@ -30,6 +30,7 @@ const config: HardhatUserConfig = {
       //   url: process.env.MAINNET_FORKING_URL as string,
       //   blockNumber: 16428096
       // }
+      allowUnlimitedContractSize: true,
     },
     mainnet: {
       url: process.env.MAINNET_URL,
