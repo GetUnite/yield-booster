@@ -668,7 +668,21 @@ contract AlluoLockedVault is
             uint256 previousTotalRequestedWithdrawals = totalRequestedWithdrawals;
 
             uint256 newUnsatisfiedWithdrawals = _processWithdrawalRequests();
-            // 3. Lock remaining to frax convex
+
+            // 3. Wrap Lps in the contract if there are any
+            uint256 assets = IERC20MetadataUpgradeable(asset()).balanceOf(
+                address(this)
+            );
+
+            if (assets > 0) {
+                IERC20MetadataUpgradeable(asset()).safeIncreaseAllowance(
+                    stakingToken,
+                    assets
+                );
+                IConvexWrapper(stakingToken).deposit(assets, address(this));
+            }
+
+            // 4. Lock remaining to frax convex
             uint256 remainingsToLock = IERC20MetadataUpgradeable(stakingToken)
                 .balanceOf(address(this)) -
                 previousTotalRequestedWithdrawals -
@@ -728,7 +742,7 @@ contract AlluoLockedVault is
         console.log("Frax Total rewards", totalRewards);
     }
 
-    function _unlockFromFraxConvex() internal {
+    function _unlockFromFraxConvex() internal returns (bool) {
         IFraxFarmERC20.LockedStake[] memory lockedstakes = IFraxFarmERC20(
             fraxPool
         ).lockedStakesOf(address(this));
@@ -741,7 +755,8 @@ contract AlluoLockedVault is
                 lockedstakes[lockedstakes.length - 1].kek_id,
                 address(this)
             );
-        } else return;
+            return true;
+        } else return false;
     }
 
     /// @notice Unlocks all funds from Frax Convex. Wrapped lp tokens are transfered to the vault.
@@ -750,7 +765,8 @@ contract AlluoLockedVault is
     }
 
     function unlockUserFunds() external {
-        _unlockFromFraxConvex();
+        bool success = _unlockFromFraxConvex();
+        require(success, "AlluoVault: funds locked");
 
         // burn shares of the user & update totalWithdrawalRequest
         Shareholder memory shareholder = userWithdrawals[msg.sender];

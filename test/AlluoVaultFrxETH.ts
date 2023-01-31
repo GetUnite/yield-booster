@@ -865,6 +865,68 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
         }
     })
 
+    it("User should be able to unlock if gelato is not triggered", async function () {
+
+        const amount = parseEther("10.0");
+
+        await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
+        await ethFrxEthLp.connect(signers[1]).approve(AlluoVault.address, ethers.constants.MaxUint256);
+
+        for (let i = 1; i < 6; i++) {
+            console.log(`\n--------------- new cycle ----------------------- \n`)
+
+            await exchange.exchange(
+                ZERO_ADDR, cvx.address, amount, 0, { value: amount }
+            )
+            // to avoid devision by zero
+            await cvx.transfer(alluoPool.address, amount.div(2));
+            await cvx.transfer(AlluoVault.address, amount.div(2));
+
+            await AlluoVault.deposit(amount, signers[0].address);
+            await AlluoVault.withdraw(amount, signers[0].address, signers[0].address);
+
+            const balanceBefore = await ethFrxEthLp.balanceOf(signers[0].address);
+            await AlluoVault.claim(ethFrxEthLp.address, signers[0].address);
+            expect(await ethFrxEthLp.balanceOf(signers[0].address)).to.be.eq(balanceBefore); // not satisfied claim before the cycle
+
+            await AlluoVault.stakeUnderlying();
+            await alluoPool.connect(admin).farm();
+            await skipDays(10);
+
+            console.log("\n----------before second farm--------------\n")
+            await ethFrxEthLp.transfer(signers[1].address, amount.div(2));
+            await AlluoVault.connect(signers[1]).deposit(amount.div(2), signers[1].address);
+            console.log("Balance of staking token before 2nd stakeUnderlying()", await stakingToken.balanceOf(AlluoVault.address));
+
+            // First time round, we expect stkaingtoken == 0 because the first farm() locks the user rather than send his tokens back. AKA you can only receive your tokens back after
+            // at least 1 farm has passed (when initializing the vault)
+            // 
+            // Second time round, when we call farm in line 370, signer[0]'s tokens are _processed()... immediately because lockedstakes.length>0
+            if (i == 1) {
+                expect(await stakingToken.balanceOf(AlluoVault.address)).to.be.eq(0);
+
+            } else {
+                expect(await stakingToken.balanceOf(AlluoVault.address)).to.be.eq(amount);
+            }
+            console.log("Balance of staking token after 2nd stakeUnderlying()", await stakingToken.balanceOf(AlluoVault.address));
+            await cvx.transfer(alluoPool.address, amount); // to avoid devision by zero
+            await AlluoVault.stakeUnderlying();
+            await AlluoVault.unlockUserFunds();
+            await AlluoVault.claim(ethFrxEthLp.address, signers[0].address);
+            await alluoPool.connect(admin).farm(); // requests processed, shares burnt, 2 kek_id
+
+            expect(await AlluoVault.totalAssets()).to.be.eq(amount.div(2).mul(i)); // only deposit of the second signer
+            expect(await AlluoVault.totalSupply()).to.be.eq(amount.div(2).mul(i)); // since first signer's shares have been burnt
+
+            expect(await ethFrxEthLp.balanceOf(signers[0].address)).to.be.gt(balanceBefore);
+            expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(i * 2);
+            await skipDays(10);
+
+            console.log(`\nChecked: after ${i * 2} farmings lockedStakesOfLength() is ${i * 2}`)
+        }
+
+    })
+
 
 
     /* ----------------------- SHARE TRANSFERS ------------------------- */
