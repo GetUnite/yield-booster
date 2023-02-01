@@ -49,7 +49,7 @@ describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
                     enabled: true,
                     jsonRpcUrl: process.env.MAINNET_FORKING_URL as string,
                     //you can fork from last block by commenting next line
-                    blockNumber: 16428096,
+                    blockNumber: 16532114,
                 },
             },],
         });
@@ -130,7 +130,6 @@ describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
         await AlluoVault.setPool(alluoPool.address);
         await AlluoVault.grantRole(await AlluoVault.DEFAULT_ADMIN_ROLE(), alluoPool.address)
 
-
     });
 
     afterEach(async () => {
@@ -202,7 +201,7 @@ describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
 
     })
 
-    it.only("Should just wrap lps if stake is still locked in frax", async function () {
+    it("Should just wrap lps if stake is still locked in frax", async function () {
         const amount = parseEther("10");
         await cvxCrvFraxBPlp.approve(AlluoVault.address, ethers.constants.MaxUint256);
         await AlluoVault.deposit(amount.mul(2), signers[0].address);
@@ -213,11 +212,9 @@ describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
         console.log("here")
         // await skipDays(10);
         await exchange.exchange(
-            ZERO_ADDR, cvx.address, amount, 0, { value: amount }
+            ZERO_ADDR, fxs.address, amount, 0, { value: amount }
         )
-        // to avoid devision by zero
-        await cvx.transfer(alluoPool.address, amount.div(2));
-        await cvx.transfer(AlluoVault.address, amount.div(2));
+        await fxs.transfer(AlluoVault.address, amount.div(2));
 
         await alluoPool.connect(admin).farm();
 
@@ -555,7 +552,7 @@ describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
 
     })
 
-    it.only("User should not get claim if withdrawal request happened before the very first lock into frax", async function () {
+    it("User should not get claim if withdrawal request happened before the very first lock into frax", async function () {
         const amount = parseEther("10");
         await cvxCrvFraxBPlp.approve(AlluoVault.address, ethers.constants.MaxUint256);
         await AlluoVault.deposit(amount.mul(2), signers[0].address);
@@ -564,11 +561,10 @@ describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
         await alluoPool.connect(admin).farm();
 
         await exchange.exchange(
-            ZERO_ADDR, cvx.address, amount, 0, { value: amount }
+            ZERO_ADDR, fxs.address, amount, 0, { value: amount }
         )
         // to avoid devision by zero
-        await cvx.transfer(alluoPool.address, amount.div(2));
-        await cvx.transfer(AlluoVault.address, amount.div(2));
+        await fxs.transfer(AlluoVault.address, amount.div(2));
 
         await alluoPool.connect(admin).farm(); // should just return without 
 
@@ -748,7 +744,7 @@ describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
         expect(await (await AlluoVault.userWithdrawals(signers[0].address)).withdrawalAvailable).to.be.eq(0)
         expect(await (await AlluoVault.userWithdrawals(signers[0].address)).withdrawalRequested).to.be.eq(lpBalance.div(2))
         expect(await AlluoVault.balanceOf(signers[0].address)).to.be.eq(lpBalance.div(2))
-        expect(await AlluoVault.stakedBalance()).to.be.eq(lpBalance)
+        expect(await AlluoVault.stakedBalance()).to.be.eq(lpBalance.div(2).mul(2))
         expect(await AlluoVault.lockedBalance()).to.be.eq(0)
 
     })

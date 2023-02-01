@@ -352,11 +352,6 @@
       "kind": "uups"
     },
     {
-      "address": "0x15Ff10fCc8A1a50bFbE07847A22664801eA79E0f",
-      "txHash": "0x9385d3e3c4ed73022303d648174f7a197e900a376c2a2f4b1e9c8db3054431cd",
-      "kind": "uups"
-    },
-    {
       "address": "0x8f119cd256a0FfFeed643E830ADCD9767a1d517F",
       "txHash": "0xa6ae4c05dbe43f016dedf6d0bb26a15709bb738539347e8d6aae3b5ad7a3300b",
       "kind": "uups"
@@ -777,8 +772,13 @@
       "kind": "uups"
     },
     {
+      "address": "0x15Ff10fCc8A1a50bFbE07847A22664801eA79E0f",
+      "txHash": "0x22a7642edc5a183f8a66eafa72f4d2564dad1294b9d8e0a1c92313f840d2ecb0",
+      "kind": "uups"
+    },
+    {
       "address": "0xd038A2EE73b64F30d65802Ad188F27921656f28F",
-      "txHash": "0x3a511006153193e6b45b90590c547e2063c18b27ea57a0fe94fae81856858376",
+      "txHash": "0x72733a8046f6cd4057b4c9227f89f83f2ca87eade7d9b79779a1aa05f89a6a81",
       "kind": "uups"
     }
   ],
@@ -2317,9 +2317,9 @@
         }
       }
     },
-    "92e0b7d34c33b7662ddfcf0a86fb07981f07a476649e87ca0096e126ab6df151": {
+    "40af1d2148c01a4bde3b58914d2cf922ac4d8e5ba31f00818b2b077c5cd27559": {
       "address": "0x01cf58e264d7578D4C67022c58A24CbC4C4a304E",
-      "txHash": "0x73f1658c8e8fa561bcf7a586bc1568f25344db07026fdf92a5dd202ce1792f98",
+      "txHash": "0xe373b5631a7369b48358a93e2362ecc0801aa911f5b0641c9f30febb5971933d",
       "layout": {
         "solcVersion": "0.8.11",
         "storage": [
@@ -2456,7 +2456,7 @@
             "label": "_asset",
             "offset": 0,
             "slot": "351",
-            "type": "t_contract(IERC20Upgradeable)2160",
+            "type": "t_contract(IERC20Upgradeable)2033",
             "contract": "ERC4626Upgradeable",
             "src": "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol:30"
           },
@@ -2496,7 +2496,7 @@
             "label": "userWithdrawals",
             "offset": 0,
             "slot": "403",
-            "type": "t_mapping(t_address,t_struct(Shareholder)6866_storage)",
+            "type": "t_mapping(t_address,t_struct(Shareholder)5329_storage)",
             "contract": "AlluoLockedVault",
             "src": "contracts/AlluoLockedVault.sol:46"
           },
@@ -2600,7 +2600,7 @@
             "label": "rewardToken",
             "offset": 1,
             "slot": "415",
-            "type": "t_contract(IERC20MetadataUpgradeable)2890",
+            "type": "t_contract(IERC20MetadataUpgradeable)2763",
             "contract": "AlluoLockedVault",
             "src": "contracts/AlluoLockedVault.sol:62"
           },
@@ -2608,7 +2608,7 @@
             "label": "yieldTokens",
             "offset": 0,
             "slot": "416",
-            "type": "t_struct(AddressSet)5015_storage",
+            "type": "t_struct(AddressSet)4888_storage",
             "contract": "AlluoLockedVault",
             "src": "contracts/AlluoLockedVault.sol:64"
           }
@@ -2646,11 +2646,11 @@
             "label": "bytes32",
             "numberOfBytes": "32"
           },
-          "t_contract(IERC20MetadataUpgradeable)2890": {
+          "t_contract(IERC20MetadataUpgradeable)2763": {
             "label": "contract IERC20MetadataUpgradeable",
             "numberOfBytes": "20"
           },
-          "t_contract(IERC20Upgradeable)2160": {
+          "t_contract(IERC20Upgradeable)2033": {
             "label": "contract IERC20Upgradeable",
             "numberOfBytes": "20"
           },
@@ -2662,7 +2662,7 @@
             "label": "mapping(address => mapping(address => uint256))",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_address,t_struct(Shareholder)6866_storage)": {
+          "t_mapping(t_address,t_struct(Shareholder)5329_storage)": {
             "label": "mapping(address => struct AlluoLockedVault.Shareholder)",
             "numberOfBytes": "32"
           },
@@ -2682,12 +2682,12 @@
             "label": "string",
             "numberOfBytes": "32"
           },
-          "t_struct(AddressSet)5015_storage": {
+          "t_struct(AddressSet)4888_storage": {
             "label": "struct EnumerableSetUpgradeable.AddressSet",
             "members": [
               {
                 "label": "_inner",
-                "type": "t_struct(Set)4700_storage",
+                "type": "t_struct(Set)4573_storage",
                 "offset": 0,
                 "slot": "0"
               }
@@ -2712,7 +2712,7 @@
             ],
             "numberOfBytes": "64"
           },
-          "t_struct(Set)4700_storage": {
+          "t_struct(Set)4573_storage": {
             "label": "struct EnumerableSetUpgradeable.Set",
             "members": [
               {
@@ -2730,7 +2730,7 @@
             ],
             "numberOfBytes": "64"
           },
-          "t_struct(Shareholder)6866_storage": {
+          "t_struct(Shareholder)5329_storage": {
             "label": "struct AlluoLockedVault.Shareholder",
             "members": [
               {

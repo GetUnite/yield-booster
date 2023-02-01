@@ -249,7 +249,7 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
 
     })
 
-    it.only("Should just wrap lps if stake is still locked in frax", async function () {
+    it("Should just wrap lps if stake is still locked in frax", async function () {
         const amount = parseEther("10");
         await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
         await AlluoVault.deposit(amount.mul(2), signers[0].address);
@@ -593,7 +593,7 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
 
     })
 
-    it.only("User should not get claim if withdrawal request happened before the very first lock into frax", async function () {
+    it("User should not get claim if withdrawal request happened before the very first lock into frax", async function () {
         const amount = parseEther("10");
         await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
         await AlluoVault.deposit(amount.mul(2), signers[0].address);
