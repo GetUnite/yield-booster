@@ -463,8 +463,6 @@ contract AlluoLockedVault is
     {
         Shareholder memory shareholder = userWithdrawals[msg.sender];
         amount = shareholder.withdrawalAvailable;
-        // console.log("Withdrawal requested:", shareholder.withdrawalRequested);
-        // console.log("Withdrawal available:", amount);
         if (amount > 0) {
             totalRequestedWithdrawals -= amount;
             if (shareholder.withdrawalRequested == 0) {
@@ -561,32 +559,28 @@ contract AlluoLockedVault is
             fraxPool
         ).lockedStakesOf(address(this));
 
-        // lock only if we have locked already
+        // lock only if we have locked already and if there are spare tokens to lock
         if (
             lockedstakes.length != 0 &&
-            lockedstakes[lockedstakes.length - 1].ending_timestamp != 0
+            lockedstakes[lockedstakes.length - 1].ending_timestamp != 0 &&
+            IConvexWrapper(stakingToken).balanceOf(address(this)) >
+            totalRequestedWithdrawals
         ) {
-            if (
-                // check if we have spare staking tokens to lock (keeping necessary amount to satisfy withdrawals)
-                IConvexWrapper(stakingToken).balanceOf(address(this)) >
-                totalRequestedWithdrawals
-            ) {
-                uint256 wrappedBalance = IConvexWrapper(stakingToken).balanceOf(
-                    address(this)
-                ) - totalRequestedWithdrawals;
-                IERC20MetadataUpgradeable(stakingToken).safeIncreaseAllowance(
-                    fraxPool,
-                    wrappedBalance
-                );
-                IFraxFarmERC20(fraxPool).lockAdditional(
-                    lockedstakes[lockedstakes.length - 1].kek_id,
-                    wrappedBalance
-                );
-                emit LockedAdditional(
-                    lockedstakes[lockedstakes.length - 1].kek_id,
-                    wrappedBalance
-                );
-            }
+            uint256 wrappedBalance = IConvexWrapper(stakingToken).balanceOf(
+                address(this)
+            ) - totalRequestedWithdrawals;
+            IERC20MetadataUpgradeable(stakingToken).safeIncreaseAllowance(
+                fraxPool,
+                wrappedBalance
+            );
+            IFraxFarmERC20(fraxPool).lockAdditional(
+                lockedstakes[lockedstakes.length - 1].kek_id,
+                wrappedBalance
+            );
+            emit LockedAdditional(
+                lockedstakes[lockedstakes.length - 1].kek_id,
+                wrappedBalance
+            );
         }
     }
 
@@ -608,18 +602,6 @@ contract AlluoLockedVault is
                 shareholder.withdrawalAvailable += requestedAmount;
                 shareholder.withdrawalRequested -= requestedAmount;
                 withdrawalqueue.pop();
-                // console.log(
-                //     "Withdrawal requested:",
-                //     shareholder.withdrawalRequested
-                // );
-                // console.log(
-                //     "Withdrawal available:",
-                //     shareholder.withdrawalAvailable
-                // );
-                // console.log(
-                //     "newUnsatisfiedWithdrawals",
-                //     newUnsatisfiedWithdrawals
-                // );
             }
             return newUnsatisfiedWithdrawals;
         }
@@ -644,44 +626,9 @@ contract AlluoLockedVault is
         IFraxFarmERC20.LockedStake[] memory lockedstakes = IFraxFarmERC20(
             fraxPool
         ).lockedStakesOf(address(this));
-        if (lockedstakes.length != 0) {
-            // we have locked before, do nothing if funds are still locked
-            if (
-                lockedstakes[lockedstakes.length - 1].ending_timestamp >=
-                block.timestamp
-            ) return;
-            // 2. unlock from frax if we have funds locked & unlocking is available
-            if (lockedstakes[lockedstakes.length - 1].liquidity != 0) {
-                IFraxFarmERC20(fraxPool).withdrawLocked(
-                    lockedstakes[lockedstakes.length - 1].kek_id,
-                    address(this)
-                ); // claims rewards from frax
-            }
 
-            uint256 previousTotalRequestedWithdrawals = totalRequestedWithdrawals;
-
-            // 3. Updates userWithdrawals mapping, burns shares of those in the queue and clears withdrawal queue
-            uint256 newUnsatisfiedWithdrawals = _processWithdrawalRequests();
-
-            // 4. Lock remaining to frax convex
-            uint256 remainingsToLock = IERC20MetadataUpgradeable(stakingToken)
-                .balanceOf(address(this)) -
-                previousTotalRequestedWithdrawals -
-                newUnsatisfiedWithdrawals;
-            // console.log("\nremainingsToLock", remainingsToLock);
-
-            if (remainingsToLock > 0) {
-                IERC20MetadataUpgradeable(stakingToken).safeIncreaseAllowance(
-                    fraxPool,
-                    remainingsToLock
-                );
-                bytes32 kek_id = IFraxFarmERC20(fraxPool).stakeLocked(
-                    remainingsToLock,
-                    duration
-                );
-                emit StakeLocked(kek_id, remainingsToLock, duration);
-            }
-        } else {
+        // 2. Check if we have ever staked previously in Frax Convex. Stake for the first time if needed
+        if (lockedstakes.length == 0) {
             uint256 amountToLock = IERC20MetadataUpgradeable(stakingToken)
                 .balanceOf(address(this));
             if (amountToLock > 0) {
@@ -694,6 +641,32 @@ contract AlluoLockedVault is
                     duration
                 );
                 emit StakeLocked(kek_id, amountToLock, duration);
+            }
+        } else {
+            // 3. If we have staked before, stake is not zero and can be unlocked, then unlock
+            bool success = _unlockFromFraxConvex();
+            if (success) {
+                uint256 previousTotalRequestedWithdrawals = totalRequestedWithdrawals;
+
+                // 3. Updates userWithdrawals mapping, burns shares of those in the queue and clears withdrawal queue
+                uint256 newUnsatisfiedWithdrawals = _processWithdrawalRequests();
+
+                // 4. Lock remaining to frax convex
+                uint256 remainingsToLock = IERC20MetadataUpgradeable(
+                    stakingToken
+                ).balanceOf(address(this)) -
+                    previousTotalRequestedWithdrawals -
+                    newUnsatisfiedWithdrawals;
+
+                if (remainingsToLock > 0) {
+                    IERC20MetadataUpgradeable(stakingToken)
+                        .safeIncreaseAllowance(fraxPool, remainingsToLock);
+                    bytes32 kek_id = IFraxFarmERC20(fraxPool).stakeLocked(
+                        remainingsToLock,
+                        duration
+                    );
+                    emit StakeLocked(kek_id, remainingsToLock, duration);
+                }
             }
         }
     }
@@ -731,7 +704,8 @@ contract AlluoLockedVault is
         if (
             lockedstakes.length != 0 &&
             lockedstakes[lockedstakes.length - 1].ending_timestamp <=
-            block.timestamp
+            block.timestamp &&
+            lockedstakes[lockedstakes.length - 1].liquidity != 0
         ) {
             IFraxFarmERC20(fraxPool).withdrawLocked(
                 lockedstakes[lockedstakes.length - 1].kek_id,

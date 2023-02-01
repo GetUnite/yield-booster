@@ -1032,6 +1032,20 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
 
     })
 
+    it("Should transfer shares on behalf of the owner", async function () {
+        const amount = parseEther("20");
+        await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
+        await AlluoVault.deposit(amount, signers[0].address);
+
+        await AlluoVault.stakeUnderlying();
+        await AlluoVault.withdraw(amount.div(2), signers[0].address, signers[0].address);
+        await AlluoVault.approve(signers[1].address, amount);
+        await AlluoVault.connect(signers[1]).transferFrom(signers[0].address, signers[1].address, amount.div(4))
+
+        expect(await AlluoVault.balanceOf(signers[0].address)).to.be.eq(amount.div(4).mul(3))
+        expect(await AlluoVault.balanceOf(signers[1].address)).to.be.eq(amount.div(4));
+    })
+
     /* ----------------------- ADMIN FUNCTIONS & OTHER ------------------------- */
 
     it("Admin should unlock all funds from frax convex", async function () {
