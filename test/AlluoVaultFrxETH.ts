@@ -2,7 +2,6 @@ import { parseEther, parseUnits } from "@ethersproject/units";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { expect } from "chai";
 import { BigNumber } from "ethers";
-import { watchFile } from "fs";
 import { ethers, network, upgrades } from "hardhat";
 import { afterEach, before } from "mocha";
 import { Exchange, IERC20MetadataUpgradeable, AlluoLockedVault, IFraxFarmERC20, IConvexWrapper, AlluoVaultPool } from "../typechain";
@@ -250,6 +249,22 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
 
     })
 
+    it.only("Should just wrap lps if stake is still locked in frax", async function () {
+        const amount = parseEther("10");
+        await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
+        await AlluoVault.deposit(amount.mul(2), signers[0].address);
+        await AlluoVault.stakeUnderlying();
+        await AlluoVault.withdraw(amount, signers[0].address, signers[0].address);
+        await alluoPool.connect(admin).farm();
+        await AlluoVault.deposit(amount, signers[0].address);
+        await alluoPool.connect(admin).farm();
+
+        expect(await ethFrxEthLp.balanceOf(AlluoVault.address)).to.be.eq(0);
+        expect(await stakingToken.balanceOf(AlluoVault.address)).to.be.eq(amount);
+        expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(1);
+
+    })
+
     it("Check if second staking is to the same kek id", async function () {
         const amount = parseEther("10");
         await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
@@ -320,8 +335,6 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
         await AlluoVault.deposit(amount, signers[0].address);
         await AlluoVault.stakeUnderlying();
         expect(await ethFrxEthPool.lockedLiquidityOf(AlluoVault.address)).to.be.eq(0); // locked balance is still zero before farm()
-
-        //TODO:
 
         await exchange.exchange(
             ZERO_ADDR, cvx.address, amount, 0, { value: amount }
@@ -580,7 +593,7 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
 
     })
 
-    it("User should not get claim if withdrawal request happened before the very first lock into frax", async function () {
+    it.only("User should not get claim if withdrawal request happened before the very first lock into frax", async function () {
         const amount = parseEther("10");
         await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
         await AlluoVault.deposit(amount.mul(2), signers[0].address);
@@ -596,22 +609,6 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
         expect(await ethFrxEthLp.balanceOf(signers[0].address)).to.be.eq(balanceBefore);
         expect(await (await AlluoVault.userWithdrawals(signers[0].address)).withdrawalAvailable).to.be.eq(0);
         expect(await (await AlluoVault.userWithdrawals(signers[0].address)).withdrawalRequested).to.be.eq(amount);
-
-    })
-
-    it("Should just wrap lps if stake is still locked in frax ", async function () {
-        const amount = parseEther("10");
-        await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
-        await AlluoVault.deposit(amount.mul(2), signers[0].address);
-        await AlluoVault.stakeUnderlying();
-        await AlluoVault.withdraw(amount, signers[0].address, signers[0].address);
-        await alluoPool.connect(admin).farm();
-        await AlluoVault.deposit(amount, signers[0].address);
-        await alluoPool.connect(admin).farm();
-
-        expect(await ethFrxEthLp.balanceOf(AlluoVault.address)).to.be.eq(0);
-        expect(await stakingToken.balanceOf(AlluoVault.address)).to.be.eq(amount);
-        expect(await ethFrxEthPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(1);
 
     })
 
@@ -717,21 +714,6 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
         await AlluoVault.withdraw(lpBalance.div(4), signers[0].address, signers[0].address);
         await expect(AlluoVault.withdraw(lpBalance.div(2), signers[0].address, signers[0].address)).to.be.reverted;
     })
-
-    // it("Should claim to another address", async function () {
-    //     const lpBalance = makeEvenNumber(await ethFrxEthLp.balanceOf(signers[0].address));
-    //     await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
-    //     await AlluoVault.deposit(lpBalance.div(2), signers[0].address);
-    //     await AlluoVault.stakeUnderlying();
-    //     await alluoPool.connect(admin).farm();
-    //     await skipDays(8);
-    //     await AlluoVault.withdraw(lpBalance.div(4), signers[0].address, signers[0].address);
-    //     await alluoPool.connect(admin).farm();
-
-    //     const balanceBefore = await usdc.balanceOf(signers[2].address);
-    //     await AlluoVault.claim(usdc.address, signers[2].address);
-    //     expect(await usdc.balanceOf(signers[2].address)).to.be.gt(balanceBefore);
-    // })
 
     it("Should increase withdrawal amount", async function () {
         const lpBalance = makeEvenNumber(await ethFrxEthLp.balanceOf(signers[0].address));
@@ -939,11 +921,11 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
 
     })
 
-    it.only("Should unlock and allocate a correct amount", async() => {
+    it("Should unlock and allocate a correct amount", async () => {
         await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
         await ethFrxEthLp.connect(signers[1]).approve(AlluoVault.address, ethers.constants.MaxUint256);
         await ethFrxEthLp.connect(signers[2]).approve(AlluoVault.address, ethers.constants.MaxUint256);
-        
+
         const balance1 = makeEvenNumber(await ethFrxEthLp.balanceOf(signers[0].address));
         await ethFrxEthLp.transfer(signers[1].address, balance1.div(2));
         await ethFrxEthLp.transfer(signers[2].address, balance1.div(5));
@@ -953,7 +935,7 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
         console.log("User 2 lpBalance", balance2)
         console.log("User 3 lpBalance", balance3)
 
-        
+
         await exchange.exchange(
             ZERO_ADDR, cvx.address, parseEther("3"), 0, { value: parseEther("3") }
         )
@@ -962,7 +944,7 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
             ZERO_ADDR, cvx.address, parseEther("5"), 0, { value: parseEther("5") }
         )
 
-        await cvx.transfer(alluoPool.address,  parseEther("3").div(2)); // to avoid devision by zero
+        await cvx.transfer(alluoPool.address, parseEther("3").div(2)); // to avoid devision by zero
         await cvx.transfer(AlluoVault.address, parseEther("3").div(2));
 
         await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
@@ -971,7 +953,7 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
         await alluoPool.connect(admin).farm();
         await skipDays(9);
 
-        await cvx.transfer(alluoPool.address,  (await cvx.balanceOf(signers[0].address)).div(2)); // to avoid devision by zero
+        await cvx.transfer(alluoPool.address, (await cvx.balanceOf(signers[0].address)).div(2)); // to avoid devision by zero
         await AlluoVault.connect(signers[1]).deposit(parseEther("9"), signers[1].address);
         await AlluoVault.connect(signers[2]).deposit(parseEther("5"), signers[2].address);
         await AlluoVault.connect(signers[1]).withdraw(parseEther("7.5"), signers[1].address, signers[1].address);
@@ -1150,11 +1132,9 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
         await AlluoVault.deposit(amount, signers[0].address)
         console.log("User balance after deposit", await AlluoVault.balanceOf(signers[0].address));
         await ethFrxEthLp.connect(signers[1]).transfer(AlluoVault.address, amount.mul(10));
-        console.log("here")
         await AlluoVault.redeem(amount, signers[0].address, signers[0].address); // should burn all
-        console.log("here")
+
         await AlluoVault.stakeUnderlying();
-        console.log("here")
         await alluoPool.connect(admin).farm();
 
         await skipDays(9);

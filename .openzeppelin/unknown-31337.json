@@ -778,7 +778,7 @@
     },
     {
       "address": "0xd038A2EE73b64F30d65802Ad188F27921656f28F",
-      "txHash": "0x399ed09ae0c418ee9072d11f8ea84ba6be51f74773ebf0f9dd4cf311cc5b4667",
+      "txHash": "0x3a511006153193e6b45b90590c547e2063c18b27ea57a0fe94fae81856858376",
       "kind": "uups"
     }
   ],
@@ -2317,9 +2317,9 @@
         }
       }
     },
-    "70e16259a9e3cd407957671ffbb4c7e1a51819e1037c5fc6b5673f6c1cd16876": {
+    "92e0b7d34c33b7662ddfcf0a86fb07981f07a476649e87ca0096e126ab6df151": {
       "address": "0x01cf58e264d7578D4C67022c58A24CbC4C4a304E",
-      "txHash": "0x0ed7b394339c73dfed2b1bd379fb40d610139abf98202b85b1b9233ec6dfeb0a",
+      "txHash": "0x73f1658c8e8fa561bcf7a586bc1568f25344db07026fdf92a5dd202ce1792f98",
       "layout": {
         "solcVersion": "0.8.11",
         "storage": [
@@ -2456,7 +2456,7 @@
             "label": "_asset",
             "offset": 0,
             "slot": "351",
-            "type": "t_contract(IERC20Upgradeable)2033",
+            "type": "t_contract(IERC20Upgradeable)2160",
             "contract": "ERC4626Upgradeable",
             "src": "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol:30"
           },
@@ -2496,7 +2496,7 @@
             "label": "userWithdrawals",
             "offset": 0,
             "slot": "403",
-            "type": "t_mapping(t_address,t_struct(Shareholder)5329_storage)",
+            "type": "t_mapping(t_address,t_struct(Shareholder)6866_storage)",
             "contract": "AlluoLockedVault",
             "src": "contracts/AlluoLockedVault.sol:46"
           },
@@ -2600,7 +2600,7 @@
             "label": "rewardToken",
             "offset": 1,
             "slot": "415",
-            "type": "t_contract(IERC20MetadataUpgradeable)2763",
+            "type": "t_contract(IERC20MetadataUpgradeable)2890",
             "contract": "AlluoLockedVault",
             "src": "contracts/AlluoLockedVault.sol:62"
           },
@@ -2608,7 +2608,7 @@
             "label": "yieldTokens",
             "offset": 0,
             "slot": "416",
-            "type": "t_struct(AddressSet)4888_storage",
+            "type": "t_struct(AddressSet)5015_storage",
             "contract": "AlluoLockedVault",
             "src": "contracts/AlluoLockedVault.sol:64"
           }
@@ -2646,11 +2646,11 @@
             "label": "bytes32",
             "numberOfBytes": "32"
           },
-          "t_contract(IERC20MetadataUpgradeable)2763": {
+          "t_contract(IERC20MetadataUpgradeable)2890": {
             "label": "contract IERC20MetadataUpgradeable",
             "numberOfBytes": "20"
           },
-          "t_contract(IERC20Upgradeable)2033": {
+          "t_contract(IERC20Upgradeable)2160": {
             "label": "contract IERC20Upgradeable",
             "numberOfBytes": "20"
           },
@@ -2662,7 +2662,7 @@
             "label": "mapping(address => mapping(address => uint256))",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_address,t_struct(Shareholder)5329_storage)": {
+          "t_mapping(t_address,t_struct(Shareholder)6866_storage)": {
             "label": "mapping(address => struct AlluoLockedVault.Shareholder)",
             "numberOfBytes": "32"
           },
@@ -2682,12 +2682,12 @@
             "label": "string",
             "numberOfBytes": "32"
           },
-          "t_struct(AddressSet)4888_storage": {
+          "t_struct(AddressSet)5015_storage": {
             "label": "struct EnumerableSetUpgradeable.AddressSet",
             "members": [
               {
                 "label": "_inner",
-                "type": "t_struct(Set)4573_storage",
+                "type": "t_struct(Set)4700_storage",
                 "offset": 0,
                 "slot": "0"
               }
@@ -2712,7 +2712,7 @@
             ],
             "numberOfBytes": "64"
           },
-          "t_struct(Set)4573_storage": {
+          "t_struct(Set)4700_storage": {
             "label": "struct EnumerableSetUpgradeable.Set",
             "members": [
               {
@@ -2730,7 +2730,7 @@
             ],
             "numberOfBytes": "64"
           },
-          "t_struct(Shareholder)5329_storage": {
+          "t_struct(Shareholder)6866_storage": {
             "label": "struct AlluoLockedVault.Shareholder",
             "members": [
               {
