@@ -254,7 +254,7 @@ describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
 
     })
 
-    it("Should relock to new kek_id correcty after full withdrawal in the previous cycle", async function () {
+    it.only("Should relock to new kek_id correcty after full withdrawal in the previous cycle", async function () {
 
         const amount = parseEther("10");
         await cvxCrvFraxBPlp.approve(AlluoVault.address, ethers.constants.MaxUint256);
@@ -279,6 +279,17 @@ describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
         // await alluoPool.connect(admin).farm(); // stakesLength = 2
         // expect(await AlluoVault.lockedBalance()).to.be.eq(amount);
         // expect(await cvxCrvFraxBPPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(2)
+        await exchange.exchange(
+            ZERO_ADDR, cvx.address, amount, 0, { value: amount }
+        )
+        // to avoid devision by zero
+        await cvx.transfer(alluoPool.address, amount.div(2));
+        await cvx.transfer(AlluoVault.address, amount.div(2));
+
+        await skipDays(9);
+        await alluoPool.connect(admin).farm(); // stakesLength = 2
+        expect(await AlluoVault.lockedBalance()).to.be.eq(amount);
+        expect(await cvxCrvFraxBPPool.lockedStakesOfLength(AlluoVault.address)).to.be.eq(2)
     })
 
 

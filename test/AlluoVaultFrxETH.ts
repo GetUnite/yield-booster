@@ -939,6 +939,67 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
 
     })
 
+    it.only("Should unlock and allocate a correct amount", async() => {
+        await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
+        await ethFrxEthLp.connect(signers[1]).approve(AlluoVault.address, ethers.constants.MaxUint256);
+        await ethFrxEthLp.connect(signers[2]).approve(AlluoVault.address, ethers.constants.MaxUint256);
+        
+        const balance1 = makeEvenNumber(await ethFrxEthLp.balanceOf(signers[0].address));
+        await ethFrxEthLp.transfer(signers[1].address, balance1.div(2));
+        await ethFrxEthLp.transfer(signers[2].address, balance1.div(5));
+        const balance2 = makeEvenNumber(await ethFrxEthLp.balanceOf(signers[1].address));
+        const balance3 = makeEvenNumber(await ethFrxEthLp.balanceOf(signers[2].address));
+        console.log("User 1 lpBalance", balance1)
+        console.log("User 2 lpBalance", balance2)
+        console.log("User 3 lpBalance", balance3)
+
+        
+        await exchange.exchange(
+            ZERO_ADDR, cvx.address, parseEther("3"), 0, { value: parseEther("3") }
+        )
+
+        await exchange.connect(signers[2]).exchange(
+            ZERO_ADDR, cvx.address, parseEther("5"), 0, { value: parseEther("5") }
+        )
+
+        await cvx.transfer(alluoPool.address,  parseEther("3").div(2)); // to avoid devision by zero
+        await cvx.transfer(AlluoVault.address, parseEther("3").div(2));
+
+        await ethFrxEthLp.approve(AlluoVault.address, ethers.constants.MaxUint256);
+        await AlluoVault.deposit(parseEther("2"), signers[0].address);
+        await AlluoVault.stakeUnderlying();
+        await alluoPool.connect(admin).farm();
+        await skipDays(9);
+
+        await cvx.transfer(alluoPool.address,  (await cvx.balanceOf(signers[0].address)).div(2)); // to avoid devision by zero
+        await AlluoVault.connect(signers[1]).deposit(parseEther("9"), signers[1].address);
+        await AlluoVault.connect(signers[2]).deposit(parseEther("5"), signers[2].address);
+        await AlluoVault.connect(signers[1]).withdraw(parseEther("7.5"), signers[1].address, signers[1].address);
+        await AlluoVault.stakeUnderlying();
+        const balance1Before = await ethFrxEthLp.balanceOf(signers[0].address);
+        const balance2Before = await ethFrxEthLp.balanceOf(signers[1].address);
+        const balance3Before = await ethFrxEthLp.balanceOf(signers[2].address);
+
+        await AlluoVault.connect(signers[1]).unlockUserFunds();
+        await AlluoVault.connect(signers[1]).claim(ethFrxEthLp.address, signers[1].address);
+        await AlluoVault.connect(signers[2]).withdraw(parseEther("2.5"), signers[2].address, signers[2].address);
+        await alluoPool.connect(admin).farm();
+        console.log("User 1 balance before and after", balance1Before, await ethFrxEthLp.balanceOf(signers[0].address));
+        console.log("User 2 balance before and after", balance2Before, await ethFrxEthLp.balanceOf(signers[1].address));
+        console.log("User 3 balance before and after", balance3Before, await ethFrxEthLp.balanceOf(signers[2].address));
+        await skipDays(9);
+        await AlluoVault.connect(admin).stakeUnderlying()
+        await AlluoVault.connect(signers[1]).unlockUserFunds();
+        await AlluoVault.connect(signers[1]).claim(ethFrxEthLp.address, signers[1].address);
+        await alluoPool.connect(admin).farm();
+        console.log("User 1 balance before and after", balance1Before, await ethFrxEthLp.balanceOf(signers[0].address));
+        console.log("User 2 balance before and after", balance2Before, await ethFrxEthLp.balanceOf(signers[1].address));
+        console.log("User 3 balance before and after", balance3Before, await ethFrxEthLp.balanceOf(signers[2].address));
+
+        expect(await ethFrxEthLp.balanceOf(signers[0].address)).to.be.eq(balance1Before);
+        expect(await ethFrxEthLp.balanceOf(signers[1].address)).to.be.eq(balance2Before.add(parseEther("7.5")));
+        expect(await ethFrxEthLp.balanceOf(signers[2].address)).to.be.eq(balance3Before);
+    })
 
 
     /* ----------------------- SHARE TRANSFERS ------------------------- */
