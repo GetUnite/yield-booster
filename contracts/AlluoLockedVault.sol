@@ -704,8 +704,7 @@ contract AlluoLockedVault is
         if (
             lockedstakes.length != 0 &&
             lockedstakes[lockedstakes.length - 1].ending_timestamp <=
-            block.timestamp &&
-            lockedstakes[lockedstakes.length - 1].liquidity != 0
+            block.timestamp
         ) {
             IFraxFarmERC20(fraxPool).withdrawLocked(
                 lockedstakes[lockedstakes.length - 1].kek_id,
