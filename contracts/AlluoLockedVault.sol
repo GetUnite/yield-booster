@@ -135,9 +135,9 @@ contract AlluoLockedVault is
         _grantRole(GELATO, _multiSigWallet);
 
         // // ENABLE ONLY FOR TESTS
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _grantRole(UPGRADER_ROLE, msg.sender);
-        _grantRole(GELATO, msg.sender);
+        _grantRole(DEFAULT_ADMIN_ROLE, _msgSender());
+        _grantRole(UPGRADER_ROLE, _msgSender());
+        _grantRole(GELATO, _msgSender());
 
         gnosis = _multiSigWallet;
         trustedForwarder = _trustedForwarder;
@@ -461,14 +461,14 @@ contract AlluoLockedVault is
         nonReentrant
         returns (uint256 amount)
     {
-        Shareholder memory shareholder = userWithdrawals[msg.sender];
+        Shareholder memory shareholder = userWithdrawals[_msgSender()];
         amount = shareholder.withdrawalAvailable;
         if (amount > 0) {
             totalRequestedWithdrawals -= amount;
             if (shareholder.withdrawalRequested == 0) {
-                delete userWithdrawals[msg.sender];
+                delete userWithdrawals[_msgSender()];
             } else {
-                userWithdrawals[msg.sender].withdrawalAvailable = 0;
+                userWithdrawals[_msgSender()].withdrawalAvailable = 0;
             }
             IConvexWrapper(stakingToken).withdrawAndUnwrap(amount);
             if (exitToken == 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE) {
@@ -503,7 +503,7 @@ contract AlluoLockedVault is
                 );
             }
         }
-        emit Claim(exitToken, amount, msg.sender, receiver);
+        emit Claim(exitToken, amount, _msgSender(), receiver);
     }
 
     /// @notice Allows users to claim their rewards in an ERC20 supported by the Alluo exchange
@@ -594,14 +594,16 @@ contract AlluoLockedVault is
                     withdrawalqueue[i - 1]
                 ];
                 uint256 requestedAmount = shareholder.withdrawalRequested;
-                uint256 shares = previewWithdraw(requestedAmount);
-                _distributeReward(withdrawalqueue[i - 1]);
-                _burn(withdrawalqueue[i - 1], shares);
-                newUnsatisfiedWithdrawals += requestedAmount; // to calculate remainings to lock
-                totalRequestedWithdrawals += requestedAmount; // to balance out totalAssets()
-                shareholder.withdrawalAvailable += requestedAmount;
-                shareholder.withdrawalRequested -= requestedAmount;
-                withdrawalqueue.pop();
+                if (requestedAmount > 0) {
+                    uint256 shares = previewWithdraw(requestedAmount);
+                    _distributeReward(withdrawalqueue[i - 1]);
+                    _burn(withdrawalqueue[i - 1], shares);
+                    newUnsatisfiedWithdrawals += requestedAmount; // to calculate remainings to lock
+                    totalRequestedWithdrawals += requestedAmount; // to balance out totalAssets()
+                    shareholder.withdrawalAvailable += requestedAmount;
+                    shareholder.withdrawalRequested -= requestedAmount;
+                    withdrawalqueue.pop();
+                }
             }
             return newUnsatisfiedWithdrawals;
         }
@@ -732,14 +734,14 @@ contract AlluoLockedVault is
         require(success, "AlluoVault: funds locked");
 
         // burn shares of the user & update totalWithdrawalRequest
-        Shareholder memory shareholder = userWithdrawals[msg.sender];
+        Shareholder memory shareholder = userWithdrawals[_msgSender()];
         uint256 requestedAmount = shareholder.withdrawalRequested;
         uint256 shares = previewWithdraw(requestedAmount);
-        _distributeReward(msg.sender);
-        _burn(msg.sender, shares);
+        _distributeReward(_msgSender());
+        _burn(_msgSender(), shares);
         totalRequestedWithdrawals += requestedAmount; // to balance out totalAssets()
-        userWithdrawals[msg.sender].withdrawalAvailable += requestedAmount;
-        userWithdrawals[msg.sender].withdrawalRequested -= requestedAmount;
+        userWithdrawals[_msgSender()].withdrawalAvailable += requestedAmount;
+        userWithdrawals[_msgSender()].withdrawalRequested -= requestedAmount;
     }
 
     function totalAssets() public view override returns (uint256) {
