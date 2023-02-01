@@ -167,7 +167,10 @@ contract AlluoVaultUpgradeable is
         );
         rewardArray[0] = RewardData(
             mainCvxPool.rewardToken(),
-            mainCvxPool.earned(address(this))
+            mainCvxPool.earned(address(this)) +
+                IERC20MetadataUpgradeable(mainCvxPool.rewardToken()).balanceOf(
+                    address(this)
+                )
         );
         for (uint256 i; i < extraRewardsLength; i++) {
             ICvxBaseRewardPool extraReward = ICvxBaseRewardPool(
@@ -176,7 +179,9 @@ contract AlluoVaultUpgradeable is
             rewardArray[i + 1] = (
                 RewardData(
                     extraReward.rewardToken(),
-                    extraReward.earned(address(this))
+                    extraReward.earned(address(this)) +
+                        IERC20MetadataUpgradeable(extraReward.rewardToken())
+                            .balanceOf(address(this))
                 )
             );
         }

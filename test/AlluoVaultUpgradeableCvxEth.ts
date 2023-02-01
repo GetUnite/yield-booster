@@ -154,10 +154,22 @@ describe("Cvx Eth Alluo Vault Upgradeable Tests", function () {
         await AlluoVault.deposit(lpBalance, signers[0].address);
         await AlluoVault.stakeUnderlying();
         await skipDays(0.01);
-        console.log("Shareholder accumulated", await AlluoVault.shareholderAccruedRewards(signers[0].address));
+        let beforeAccrued = await AlluoVault.shareholderAccruedRewards(signers[0].address);
+        console.log("Shareholder accumulated before", beforeAccrued);
 
+        // Now get some crv and cvx and send directly to the pool. Then check the view function. This is checking the edge case where there are rewards sitting in the vault as erc20s.
+        const value = parseEther("0.1");
+        await exchange.exchange(
+            ZERO_ADDR, crv.address, value, 0, { value: value }
+        )
+        let amountCrvSent = await crv.balanceOf(signers[0].address);
+        await crv.transfer(AlluoVault.address, amountCrvSent)
+        let afterAccrued = await AlluoVault.shareholderAccruedRewards(signers[0].address);
+
+        console.log("Shareholder accumulated after some erc20s are sitting", afterAccrued);
+        expect(Number(afterAccrued[0][0].amount)).greaterThanOrEqual(Number(beforeAccrued[0][0].amount.add(amountCrvSent)));
+        console.log("Difference", afterAccrued[0][0].amount.sub(beforeAccrued[0][0].amount.add(amountCrvSent)));
         await AlluoVault.claimRewardsFromPool();
-
         const crvAccumulated = await crv.balanceOf(AlluoVault.address);
         const cvxAccumulated = await cvx.balanceOf(AlluoVault.address);
         console.log(crvAccumulated)
@@ -165,6 +177,7 @@ describe("Cvx Eth Alluo Vault Upgradeable Tests", function () {
         expect(Number(crvAccumulated)).greaterThan(0)
         expect(Number(cvxAccumulated)).greaterThan(0)
     })
+
     it("Wait for rewards then loop rewards.", async function () {
         const lpBalance = await cvxEth.balanceOf(signers[0].address);
         console.log("Balance before of Cvx-ETH Lp", lpBalance)

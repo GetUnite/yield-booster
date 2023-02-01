@@ -57,5 +57,11 @@
   "dependencies": {
     "@nomicfoundation/solidity-analyzer": "^0.1.0",
     "@openzeppelin/contracts-upgradeable": "^4.7.3"
+  },
+  "scripts": {
+    "solhint": "solhint -f table contracts/**/*.sol",
+    "prettier:solidity": "prettier --write contracts/**/*.sol",
+    "alluo-ready": "solhint -f table contracts/**/*.sol && prettier --write contracts/**/*.sol && hardhat test",
+    "prepare": "husky install"
   }
 }
