@@ -602,11 +602,11 @@ contract AlluoLockedVault is
                     totalRequestedWithdrawals += requestedAmount; // to balance out totalAssets()
                     shareholder.withdrawalAvailable += requestedAmount;
                     shareholder.withdrawalRequested -= requestedAmount;
-                    withdrawalqueue.pop();
                 }
+                withdrawalqueue.pop();
             }
-            return newUnsatisfiedWithdrawals;
         }
+        return newUnsatisfiedWithdrawals;
     }
 
     /// @notice Unlocks funds from frax convex, keeps enough to satisfy withdrawal claims and locks the remaining back
