@@ -7,7 +7,6 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/IERC20MetadataUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/structs/EnumerableSetUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 
 import {ICvxBooster} from "./interfaces/ICvxBooster.sol";
 import {IExchange} from "./interfaces/IExchange.sol";
@@ -16,12 +15,11 @@ import {IFraxFarmERC20} from "./interfaces/IFraxFarmERC20.sol";
 import {IAlluoPool} from "./interfaces/IAlluoPool.sol";
 import {IWrappedEther} from "./interfaces/IWrappedEther.sol";
 
-import "hardhat/console.sol";
+// import "hardhat/console.sol";
 
 contract AlluoLockedVault is
     Initializable,
     AccessControlUpgradeable,
-    ReentrancyGuardUpgradeable,
     UUPSUpgradeable,
     ERC4626Upgradeable
 {
@@ -33,35 +31,40 @@ contract AlluoLockedVault is
     // Withdraw is withdrawing an exact amount of underlying tokens
     // Redeem is burning an exact amount of shares in the vault
 
-    ICvxBooster public constant CVX_BOOSTER =
-        ICvxBooster(0xF403C135812408BFbE8713b5A23a04b3D48AAE31);
-    IExchange public constant EXCHANGE =
-        IExchange(0x29c66CF57a03d41Cfe6d9ecB6883aa0E2AbA21Ec);
-
-    bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
-    bytes32 public constant GELATO = keccak256("GELATO");
-
-    mapping(address => uint256) public userRewardPaid;
-    mapping(address => uint256) public rewards;
-    mapping(address => Shareholder) public userWithdrawals;
-    address[] public withdrawalqueue;
-
-    address public trustedForwarder;
-    address public alluoPool;
-    address public fraxPool;
-    address public stakingToken;
-    address public gnosis;
-
     uint256 public rewardsPerShareAccumulated;
     uint256 public adminFee;
     uint256 public vaultRewardsBefore;
     uint256 public duration;
     uint256 public totalRequestedWithdrawals;
 
-    bool public upgradeStatus;
     IERC20MetadataUpgradeable public rewardToken;
-
     EnumerableSetUpgradeable.AddressSet private yieldTokens;
+
+    address public constant NATIVE_ETH =
+        0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
+    address public trustedForwarder;
+    address public alluoPool;
+    address public fraxPool;
+    address public stakingToken;
+    address public gnosis;
+
+    mapping(address => uint256) public userRewardPaid;
+    mapping(address => uint256) public rewards;
+    mapping(address => Shareholder) public userWithdrawals;
+
+    address[] public withdrawalqueue;
+
+    bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
+    bytes32 public constant GELATO = keccak256("GELATO");
+
+    ICvxBooster public constant CVX_BOOSTER =
+        ICvxBooster(0xF403C135812408BFbE8713b5A23a04b3D48AAE31);
+    IExchange public constant EXCHANGE =
+        IExchange(0x29c66CF57a03d41Cfe6d9ecB6883aa0E2AbA21Ec);
+    IWrappedEther public constant WETH =
+        IWrappedEther(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+
+    bool public upgradeStatus;
 
     using AddressUpgradeable for address;
     using SafeERC20Upgradeable for IERC20MetadataUpgradeable;
@@ -117,7 +120,6 @@ contract AlluoLockedVault is
         __UUPSUpgradeable_init();
         __ERC4626_init(_underlying);
         __ERC20_init(_name, _symbol);
-        __ReentrancyGuard_init();
         alluoPool = _alluoPool;
         rewardToken = _rewardToken;
         fraxPool = _fraxPool;
@@ -128,22 +130,34 @@ contract AlluoLockedVault is
                 type(uint256).max
             );
         }
-
-        require(_multiSigWallet.isContract(), "AlluoVault: !contract");
+        IERC20MetadataUpgradeable(asset()).safeIncreaseAllowance(
+            address(EXCHANGE),
+            type(uint256).max
+        );
         _grantRole(DEFAULT_ADMIN_ROLE, _multiSigWallet);
         _grantRole(UPGRADER_ROLE, _multiSigWallet);
         _grantRole(GELATO, _multiSigWallet);
 
         // // ENABLE ONLY FOR TESTS
-        _grantRole(DEFAULT_ADMIN_ROLE, _msgSender());
-        _grantRole(UPGRADER_ROLE, _msgSender());
-        _grantRole(GELATO, _msgSender());
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(UPGRADER_ROLE, msg.sender);
+        _grantRole(GELATO, msg.sender);
 
         gnosis = _multiSigWallet;
         trustedForwarder = _trustedForwarder;
         adminFee = 0;
         duration = 594000;
         stakingToken = IFraxFarmERC20(fraxPool).stakingToken();
+
+        IERC20MetadataUpgradeable(asset()).safeIncreaseAllowance(
+            stakingToken,
+            type(uint256).max
+        );
+
+        IERC20MetadataUpgradeable(stakingToken).safeIncreaseAllowance(
+            fraxPool,
+            type(uint256).max
+        );
     }
 
     receive() external payable {}
@@ -158,13 +172,10 @@ contract AlluoLockedVault is
         override
         returns (uint256 shares)
     {
-        _distributeReward(_msgSender());
-        require(
-            assets <= maxDeposit(receiver),
-            "ERC4626: deposit more than max"
-        );
+        _distributeReward(msg.sender);
+        require(assets <= maxDeposit(receiver));
         shares = previewDeposit(assets);
-        _deposit(_msgSender(), receiver, assets, shares);
+        _deposit(msg.sender, receiver, assets, shares);
     }
 
     /// @notice Deposits an amount of any ERC20/ETH and mints shares in the vault.
@@ -176,20 +187,17 @@ contract AlluoLockedVault is
     function depositWithoutLP(uint256 assets, address entryToken)
         external
         payable
-        nonReentrant
         returns (uint256 shares)
     {
-        _distributeReward(_msgSender());
+        _distributeReward(msg.sender);
 
-        if (entryToken == 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE) {
-            require(msg.value == assets, "AlluoVault: wrong value");
-            IWrappedEther(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2).deposit{
-                value: msg.value
-            }();
-            entryToken = address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+        if (entryToken == NATIVE_ETH) {
+            require(msg.value == assets);
+            WETH.deposit{value: msg.value}();
+            entryToken = address(WETH);
         } else {
             IERC20MetadataUpgradeable(entryToken).safeTransferFrom(
-                _msgSender(),
+                msg.sender,
                 address(this),
                 assets
             );
@@ -201,11 +209,11 @@ contract AlluoLockedVault is
         );
         assets = EXCHANGE.exchange(entryToken, asset(), assets, 0);
 
-        require(assets <= _nonLpMaxDeposit(assets), "ERC4626: deposit>max");
+        require(assets <= _nonLpMaxDeposit(assets));
         shares = _nonLpPreviewDeposit(assets);
-        _mint(_msgSender(), shares);
+        _mint(msg.sender, shares);
 
-        emit Deposit(_msgSender(), _msgSender(), assets, shares);
+        emit Deposit(msg.sender, msg.sender, assets, shares);
     }
 
     /** @dev See {IERC4626-mint}.**/
@@ -215,10 +223,10 @@ contract AlluoLockedVault is
         override
         returns (uint256 assets)
     {
-        _distributeReward(_msgSender());
-        require(shares <= maxMint(receiver), "ERC4626: mint>max");
+        _distributeReward(msg.sender);
+        require(shares <= maxMint(receiver));
         assets = previewMint(shares);
-        _deposit(_msgSender(), receiver, assets, shares);
+        _deposit(msg.sender, receiver, assets, shares);
     }
 
     /// @notice Claims all rewards from Frax and Curve.
@@ -257,40 +265,6 @@ contract AlluoLockedVault is
         IERC20MetadataUpgradeable(entryToken).safeTransfer(alluoPool, amount);
     }
 
-    /// @notice Returns all accrued Frax Convex rewards.
-    /// @return rewardArray An array of addresses and accrued rewards of each reward token.
-    function _accruedFraxRewards()
-        internal
-        view
-        returns (RewardData[] memory rewardArray)
-    {
-        address[] memory allFraxRewardTokens = IFraxFarmERC20(fraxPool)
-            .getAllRewardTokens();
-        rewardArray = new RewardData[](allFraxRewardTokens.length);
-        for (uint256 i; i < allFraxRewardTokens.length; i++) {
-            rewardArray[i] = RewardData(
-                allFraxRewardTokens[i],
-                IFraxFarmERC20(fraxPool).earned(address(this))[i]
-            );
-        }
-    }
-
-    /// @notice Returns all accrued Curve rewards.
-    /// @return EarnedData[] An array of addresses and accrued rewards of each reward token.
-    function _accruedCurveRewards()
-        internal
-        view
-        returns (IConvexWrapper.EarnedData[] memory)
-    {
-        try IConvexWrapper(stakingToken).earned(address(this)) returns (
-            IConvexWrapper.EarnedData[] memory curveRewards
-        ) {
-            return curveRewards;
-        } catch (bytes memory) {
-            return IConvexWrapper(stakingToken).earnedView(address(this)); // staking token for ETH/frxETH vault has different `earnedView()` instead of regular `earned()`: 0x4659d5fF63A1E1EDD6D5DD9CC315e063c95947d0
-        }
-    }
-
     /// @notice Returns all accrued rewards.
     /// @return rewardArray An array of addresses and accrued rewards of each reward token.
     function accruedRewards()
@@ -298,9 +272,29 @@ contract AlluoLockedVault is
         view
         returns (RewardData[] memory rewardArray)
     {
-        RewardData[] memory fraxRewards = _accruedFraxRewards();
-        IConvexWrapper.EarnedData[]
-            memory curveRewards = _accruedCurveRewards();
+        address[] memory allFraxRewardTokens = IFraxFarmERC20(fraxPool)
+            .getAllRewardTokens();
+        RewardData[] memory fraxRewards = new RewardData[](
+            allFraxRewardTokens.length
+        );
+        for (uint256 i; i < allFraxRewardTokens.length; i++) {
+            fraxRewards[i] = RewardData(
+                allFraxRewardTokens[i],
+                IFraxFarmERC20(fraxPool).earned(address(this))[i]
+            );
+        }
+
+        IConvexWrapper.EarnedData[] memory curveRewards;
+        try IConvexWrapper(stakingToken).earned(address(this)) returns (
+            IConvexWrapper.EarnedData[] memory _curveRewards
+        ) {
+            curveRewards = _curveRewards;
+        } catch (bytes memory) {
+            curveRewards = IConvexWrapper(stakingToken).earnedView(
+                address(this)
+            ); // staking token for ETH/frxETH vault has different `earnedView()` instead of regular `earned()`: 0x4659d5fF63A1E1EDD6D5DD9CC315e063c95947d0
+        }
+
         rewardArray = new RewardData[](
             fraxRewards.length + curveRewards.length
         );
@@ -338,17 +332,11 @@ contract AlluoLockedVault is
         IAlluoPool.RewardData[] memory poolAccruals = IAlluoPool(alluoPool)
             .accruedRewards();
         for (uint256 i; i < vaultAccruals.length; i++) {
-            if (totalSupply() == 0) {
-                break;
-            }
             vaultAccruals[i].amount =
                 (vaultAccruals[i].amount * balanceOf(shareholder)) /
                 totalSupply();
         }
         for (uint256 i; i < poolAccruals.length; i++) {
-            if (IAlluoPool(alluoPool).totalBalances() == 0) {
-                break;
-            }
             uint256 vaultShareOfPoolAccruals = (poolAccruals[i].amount *
                 IAlluoPool(alluoPool).balances(address(this))) /
                 IAlluoPool(alluoPool).totalBalances();
@@ -387,20 +375,17 @@ contract AlluoLockedVault is
         address receiver,
         address owner
     ) public override returns (uint256 shares) {
-        require(assets > 0, "AlluoVault: zero withdrawal");
+        require(assets > 0);
 
         Shareholder memory shareholder = userWithdrawals[owner];
 
         // `withdrawalRequested` is the amount of assets already requested for withdrawal but not yet claimed
         // We should check if the amount already requested plus the new request is not more than a user's deposit
-        require(
-            shareholder.withdrawalRequested + assets <= maxWithdraw(owner),
-            "AlluoVault: withdraw over max"
-        );
+        require(shareholder.withdrawalRequested + assets <= maxWithdraw(owner));
 
         shares = previewWithdraw(assets);
-        if (_msgSender() != owner) {
-            _spendAllowance(owner, _msgSender(), shares);
+        if (msg.sender != owner) {
+            _spendAllowance(owner, msg.sender, shares);
         }
 
         // `withdrawalqueue` is needed to go through a loop in `_processWithdrawalRequests()` and sum all requests to keep necessary amount of LPs on the contract
@@ -409,7 +394,7 @@ contract AlluoLockedVault is
         }
         // `withdrawalRequested` cannot be decreased, user can only add to the amount already requested
         userWithdrawals[owner].withdrawalRequested += assets;
-        emit Withdraw(_msgSender(), receiver, owner, assets, shares);
+        emit Withdraw(msg.sender, receiver, owner, assets, shares);
     }
 
     function withdrawalQueueLength() public view returns (uint256) {
@@ -428,16 +413,15 @@ contract AlluoLockedVault is
         address owner
     ) public override returns (uint256 assets) {
         assets = previewRedeem(shares);
-        require(assets > 0, "AlluoVault: zero withdrawal");
+        require(assets > 0);
         Shareholder memory shareholder = userWithdrawals[owner];
         require(
             shareholder.withdrawalRequested + assets <=
-                previewRedeem(maxRedeem(owner)),
-            "AlluoVault: redeem over max"
+                previewRedeem(maxRedeem(owner))
         );
 
-        if (_msgSender() != owner) {
-            _spendAllowance(owner, _msgSender(), shares);
+        if (msg.sender != owner) {
+            _spendAllowance(owner, msg.sender, shares);
         }
         // `withdrawalRequested` is the amount of assets already requested for withdrawal but not yet claimed
         // We should check if the amount already requested plus the new request is not more than a user's deposit
@@ -448,7 +432,7 @@ contract AlluoLockedVault is
         }
         // `withdrawalRequested` cannot be decreased, user can only add to the amount already requested
         userWithdrawals[owner].withdrawalRequested += assets;
-        emit Withdraw(_msgSender(), receiver, owner, assets, shares);
+        emit Withdraw(msg.sender, receiver, owner, assets, shares);
     }
 
     /// @notice Claims the unlocked funds previously requested for withdrawal
@@ -458,39 +442,24 @@ contract AlluoLockedVault is
     function claim(address exitToken, address receiver)
         external
         virtual
-        nonReentrant
         returns (uint256 amount)
     {
-        Shareholder memory shareholder = userWithdrawals[_msgSender()];
+        Shareholder memory shareholder = userWithdrawals[msg.sender];
         amount = shareholder.withdrawalAvailable;
         if (amount > 0) {
             totalRequestedWithdrawals -= amount;
             if (shareholder.withdrawalRequested == 0) {
-                delete userWithdrawals[_msgSender()];
+                delete userWithdrawals[msg.sender];
             } else {
-                userWithdrawals[_msgSender()].withdrawalAvailable = 0;
+                userWithdrawals[msg.sender].withdrawalAvailable = 0;
             }
             IConvexWrapper(stakingToken).withdrawAndUnwrap(amount);
-            if (exitToken == 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE) {
-                IERC20MetadataUpgradeable(asset()).safeIncreaseAllowance(
-                    address(EXCHANGE),
-                    amount
-                );
-                amount = EXCHANGE.exchange(
-                    asset(),
-                    address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2),
-                    amount,
-                    0
-                );
-                IWrappedEther(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2)
-                    .withdraw(amount);
+            if (exitToken == NATIVE_ETH) {
+                amount = EXCHANGE.exchange(asset(), address(WETH), amount, 0);
+                WETH.withdraw(amount);
                 (bool success, ) = receiver.call{value: amount}("");
-                require(success, "AlluoVault: fail to send eth");
+                require(success);
             } else if (exitToken != asset()) {
-                IERC20MetadataUpgradeable(asset()).safeIncreaseAllowance(
-                    address(EXCHANGE),
-                    amount
-                );
                 amount = EXCHANGE.exchange(asset(), exitToken, amount, 0);
                 IERC20MetadataUpgradeable(exitToken).safeTransfer(
                     receiver,
@@ -503,7 +472,7 @@ contract AlluoLockedVault is
                 );
             }
         }
-        emit Claim(exitToken, amount, _msgSender(), receiver);
+        emit Claim(exitToken, amount, msg.sender, receiver);
     }
 
     /// @notice Allows users to claim their rewards in an ERC20 supported by the Alluo exchange
@@ -513,10 +482,10 @@ contract AlluoLockedVault is
         external
         returns (uint256 rewardTokens)
     {
-        _distributeReward(_msgSender());
-        rewardTokens = rewards[_msgSender()];
+        _distributeReward(msg.sender);
+        rewardTokens = rewards[msg.sender];
         if (rewardTokens > 0) {
-            rewards[_msgSender()] = 0;
+            rewards[msg.sender] = 0;
             IAlluoPool(alluoPool).withdraw(rewardTokens);
             if (exitToken != address(rewardToken)) {
                 rewardToken.safeIncreaseAllowance(
@@ -531,11 +500,11 @@ contract AlluoLockedVault is
                 );
             }
             IERC20MetadataUpgradeable(exitToken).safeTransfer(
-                _msgSender(),
+                msg.sender,
                 rewardTokens
             );
         }
-        emit ClaimRewards(exitToken, rewardTokens, _msgSender());
+        emit ClaimRewards(exitToken, rewardTokens, msg.sender);
     }
 
     /// @dev To be called periodically by resolver. kek_id is deleted in frax convex pool once all funds are unlocked
@@ -547,10 +516,6 @@ contract AlluoLockedVault is
         );
 
         if (assets > 0) {
-            IERC20MetadataUpgradeable(asset()).safeIncreaseAllowance(
-                stakingToken,
-                assets
-            );
             IConvexWrapper(stakingToken).deposit(assets, address(this));
         }
 
@@ -569,10 +534,7 @@ contract AlluoLockedVault is
             uint256 wrappedBalance = IConvexWrapper(stakingToken).balanceOf(
                 address(this)
             ) - totalRequestedWithdrawals;
-            IERC20MetadataUpgradeable(stakingToken).safeIncreaseAllowance(
-                fraxPool,
-                wrappedBalance
-            );
+
             IFraxFarmERC20(fraxPool).lockAdditional(
                 lockedstakes[lockedstakes.length - 1].kek_id,
                 wrappedBalance
@@ -618,10 +580,6 @@ contract AlluoLockedVault is
         );
 
         if (assets > 0) {
-            IERC20MetadataUpgradeable(asset()).safeIncreaseAllowance(
-                stakingToken,
-                assets
-            );
             IConvexWrapper(stakingToken).deposit(assets, address(this));
         }
 
@@ -634,10 +592,6 @@ contract AlluoLockedVault is
             uint256 amountToLock = IERC20MetadataUpgradeable(stakingToken)
                 .balanceOf(address(this));
             if (amountToLock > 0) {
-                IERC20MetadataUpgradeable(stakingToken).safeIncreaseAllowance(
-                    fraxPool,
-                    amountToLock
-                );
                 bytes32 kek_id = IFraxFarmERC20(fraxPool).stakeLocked(
                     amountToLock,
                     duration
@@ -661,8 +615,6 @@ contract AlluoLockedVault is
                     newUnsatisfiedWithdrawals;
 
                 if (remainingsToLock > 0) {
-                    IERC20MetadataUpgradeable(stakingToken)
-                        .safeIncreaseAllowance(fraxPool, remainingsToLock);
                     bytes32 kek_id = IFraxFarmERC20(fraxPool).stakeLocked(
                         remainingsToLock,
                         duration
@@ -691,12 +643,12 @@ contract AlluoLockedVault is
         }
         _relockToFrax();
 
-        console.log(
-            "Vault reward after",
-            IAlluoPool(alluoPool).rewardTokenBalance()
-        );
-        console.log("Frax Vault rewards before", vaultRewardsBefore);
-        console.log("Frax Total rewards", totalRewards);
+        // console.log(
+        //     "Vault reward after",
+        //     IAlluoPool(alluoPool).rewardTokenBalance()
+        // );
+        // console.log("Frax Vault rewards before", vaultRewardsBefore);
+        // console.log("Frax Total rewards", totalRewards);
     }
 
     function _unlockFromFraxConvex() internal returns (bool) {
@@ -716,32 +668,22 @@ contract AlluoLockedVault is
         } else return false;
     }
 
-    /// @notice Unlocks all funds from Frax Convex if the locking period is over. Wrapped lp tokens are transfered to the vault.
-    /// @return success returns true if unlocking was successful
-    function unlockFromFraxConvex()
-        external
-        onlyRole(DEFAULT_ADMIN_ROLE)
-        returns (bool success)
-    {
-        success = _unlockFromFraxConvex();
-    }
-
     /// @notice Unlocks all funds from Frax Convex if the locking period is over.
     // Burns shares of the msg.sender and unlocks their funds for actual withdrawal.
     /// @dev To be called by users if they do not want to wait for `farm()` to be called.
     function unlockUserFunds() external {
         bool success = _unlockFromFraxConvex();
-        require(success, "AlluoVault: funds locked");
+        require(success);
 
         // burn shares of the user & update totalWithdrawalRequest
-        Shareholder memory shareholder = userWithdrawals[_msgSender()];
+        Shareholder memory shareholder = userWithdrawals[msg.sender];
         uint256 requestedAmount = shareholder.withdrawalRequested;
         uint256 shares = previewWithdraw(requestedAmount);
-        _distributeReward(_msgSender());
-        _burn(_msgSender(), shares);
+        _distributeReward(msg.sender);
+        _burn(msg.sender, shares);
         totalRequestedWithdrawals += requestedAmount; // to balance out totalAssets()
-        userWithdrawals[_msgSender()].withdrawalAvailable += requestedAmount;
-        userWithdrawals[_msgSender()].withdrawalRequested -= requestedAmount;
+        userWithdrawals[msg.sender].withdrawalAvailable += requestedAmount;
+        userWithdrawals[msg.sender].withdrawalRequested -= requestedAmount;
     }
 
     function totalAssets() public view override returns (uint256) {
@@ -788,11 +730,10 @@ contract AlluoLockedVault is
         address to,
         uint256 amount
     ) public override(ERC20Upgradeable) returns (bool) {
-        address spender = _msgSender();
+        address spender = msg.sender;
         require(
             amount <=
-                balanceOf(from) - userWithdrawals[from].withdrawalRequested,
-            "AlluoVault: amount > unlocked balance"
+                balanceOf(from) - userWithdrawals[from].withdrawalRequested
         );
         _spendAllowance(from, spender, amount);
         _transfer(from, to, amount);
@@ -805,11 +746,10 @@ contract AlluoLockedVault is
         override(ERC20Upgradeable)
         returns (bool)
     {
-        address owner = _msgSender();
+        address owner = msg.sender;
         require(
             amount <=
-                balanceOf(owner) - userWithdrawals[owner].withdrawalRequested,
-            "AlluoVault: amount > unlocked balance"
+                balanceOf(owner) - userWithdrawals[owner].withdrawalRequested
         );
         _transfer(owner, to, amount);
         return true;
@@ -869,40 +809,9 @@ contract AlluoLockedVault is
         onlyRole(getRoleAdmin(role))
     {
         if (role == DEFAULT_ADMIN_ROLE) {
-            require(account.isContract(), "AlluoVault: !contract");
+            require(account.isContract());
         }
         _grantRole(role, account);
-    }
-
-    function _msgSender()
-        internal
-        view
-        virtual
-        override
-        returns (address sender)
-    {
-        if (isTrustedForwarder(msg.sender)) {
-            // The assembly code is more direct than the Solidity version using `abi.decode`.
-            assembly {
-                sender := shr(96, calldataload(sub(calldatasize(), 20)))
-            }
-        } else {
-            return super._msgSender();
-        }
-    }
-
-    function _msgData()
-        internal
-        view
-        virtual
-        override
-        returns (bytes calldata)
-    {
-        if (isTrustedForwarder(msg.sender)) {
-            return msg.data[:msg.data.length - 20];
-        } else {
-            return super._msgData();
-        }
     }
 
     function _authorizeUpgrade(address)
@@ -910,18 +819,7 @@ contract AlluoLockedVault is
         override
         onlyRole(UPGRADER_ROLE)
     {
-        require(upgradeStatus, "AlluoVault: !Upgrade-allowed");
+        require(upgradeStatus);
         upgradeStatus = false;
-    }
-
-    function multicall(
-        address[] calldata destinations,
-        bytes[] calldata calldatas
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        uint256 length = destinations.length;
-        require(length == calldatas.length, "AlluoVault: lengths");
-        for (uint256 i = 0; i < length; i++) {
-            destinations[i].functionCall(calldatas[i]);
-        }
     }
 }

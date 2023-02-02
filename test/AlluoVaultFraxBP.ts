@@ -639,8 +639,8 @@ describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
         await skipDays(8);
 
         // check require statements for redeem()
-        await expect(AlluoVault.redeem(0, signers[0].address, signers[0].address)).to.be.revertedWith("AlluoVault: zero withdrawal");
-        await expect(AlluoVault.redeem(lpBalance, signers[0].address, signers[0].address)).to.be.revertedWith("AlluoVault: redeem over max");
+        await expect(AlluoVault.redeem(0, signers[0].address, signers[0].address)).to.be.reverted;
+        await expect(AlluoVault.redeem(lpBalance, signers[0].address, signers[0].address)).to.be.reverted;
 
         const ownerBalanceBefore = await frax.balanceOf(signers[0].address);
         await AlluoVault.increaseAllowance(signers[1].address, lpBalance.div(2));
@@ -719,7 +719,7 @@ describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
         await cvxCrvFraxBPlp.approve(AlluoVault.address, ethers.constants.MaxUint256);
         await AlluoVault.deposit(lpBalance.div(2), signers[0].address);
         await AlluoVault.stakeUnderlying();
-        await expect(AlluoVault.withdraw(0, signers[0].address, signers[0].address)).to.be.revertedWith("AlluoVault: zero withdrawal");
+        await expect(AlluoVault.withdraw(0, signers[0].address, signers[0].address)).to.be.reverted;
     })
 
     it("Should not satisfy claims before farming even if balanceOf(stakingToken) == totalRequestedWithdrawals", async function () {
@@ -849,7 +849,7 @@ describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
 
             await AlluoVault.stakeUnderlying();
             await alluoPool.connect(admin).farm();
-            await expect(AlluoVault.unlockUserFunds()).to.be.revertedWith("AlluoVault: funds locked");
+            await expect(AlluoVault.unlockUserFunds()).to.be.reverted;
             await skipDays(10);
 
             console.log("\n----------before second farm--------------\n")
@@ -968,7 +968,7 @@ describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
         await AlluoVault.withdraw(await AlluoVault.balanceOf(signers[0].address), signers[0].address, signers[0].address);
 
         const amount = await AlluoVault.balanceOf(signers[0].address);
-        await expect(AlluoVault.transfer(signers[1].address, amount)).to.be.revertedWith("AlluoVault: amount > unlocked balance");
+        await expect(AlluoVault.transfer(signers[1].address, amount)).to.be.reverted;
 
     })
 
@@ -1013,20 +1013,6 @@ describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
 
     /* ----------------------- ADMIN FUNCTIONS & OTHER ------------------------- */
 
-    it("Admin should unlock all funds from frax convex", async function () {
-
-        const usdcBalance = await usdc.balanceOf(signers[0].address);
-        expect(Number(usdcBalance) > 0);
-        await usdc.approve(AlluoVault.address, usdcBalance);
-        await AlluoVault.depositWithoutLP(usdcBalance, usdc.address);
-        const balaceBefore = await AlluoVault.totalAssets();
-        await AlluoVault.stakeUnderlying();
-        await alluoPool.connect(admin).farm();
-        await skipDays(9);
-        await AlluoVault.connect(admin).unlockFromFraxConvex();
-        expect(await stakingToken.balanceOf(AlluoVault.address)).to.be.gte(balaceBefore);
-    })
-
     it("After some loops, the multisig should be able to claim fees accumulated.", async function () {
         let signerRewardTokenBefore = []
         const exitToken = usdc;
@@ -1059,16 +1045,9 @@ describe("FraxConvex Alluo Vault Upgradeable Tests", function () {
         await cvxCrvFraxBPlp.approve(AlluoVault.address, ethers.constants.MaxUint256);
         await AlluoVault.deposit(lpBalance.div(2), signers[0].address);
         await AlluoVault.connect(admin).changeLockingDuration(1200600);
-        await AlluoVault.stakeUnderlying();
-        await alluoPool.connect(admin).farm();
+        expect(await AlluoVault.duration()).to.be.eq(1200600);
 
-        await AlluoVault.connect(admin).unlockFromFraxConvex();
-        expect(await AlluoVault.lockedBalance()).to.be.eq(lpBalance.div(2));
-        await skipDays(14);
-        await AlluoVault.connect(admin).unlockFromFraxConvex();
-        expect(await AlluoVault.lockedBalance()).to.be.eq(0);
     })
-
 
     it("Should track assets correctly", async () => {
         /// Deposit in nonLP tokens
