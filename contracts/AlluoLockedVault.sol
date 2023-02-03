@@ -92,6 +92,8 @@ contract AlluoLockedVault is
         uint256 indexed duration
     );
 
+    event Looped(uint256 timestamp);
+
     struct RewardData {
         address token;
         uint256 amount;
@@ -639,7 +641,7 @@ contract AlluoLockedVault is
             }
         }
         _relockToFrax();
-
+        emit Looped(block.timestamp);
         // console.log(
         //     "Vault reward after",
         //     IAlluoPool(alluoPool).rewardTokenBalance()
