@@ -134,6 +134,8 @@ contract AlluoLockedVault is
             address(EXCHANGE),
             type(uint256).max
         );
+        _grantRole(DEFAULT_ADMIN_ROLE, _alluoPool);
+
         _grantRole(DEFAULT_ADMIN_ROLE, _multiSigWallet);
         _grantRole(UPGRADER_ROLE, _multiSigWallet);
         _grantRole(GELATO, _multiSigWallet);

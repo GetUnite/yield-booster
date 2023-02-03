@@ -98,12 +98,14 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
 
         let gnosis = "0x1F020A4943EB57cd3b2213A66b355CB662Ea43C3";
         let AlluoConvexVault = await ethers.getContractFactory("AlluoLockedVault")
+        alluoPool = await ethers.getContractAt("AlluoVaultPool", "0x470e486acA0e215C925ddcc3A9D446735AabB714");
+
         AlluoVault = await upgrades.deployProxy(AlluoConvexVault, [
             "Eth-frxEth Vault",
             "Eth-frxEth",
             ethFrxEthLp.address, // underlying token
             rewardToken.address, // Curve CVX-ETH Convex Deposit (cvxcrvCVX...)
-            ZERO_ADDR, // set pool later
+            alluoPool.address, // set pool later
             gnosis,
             "0x84a0856b038eaAd1cC7E297cF34A7e72685A8693", // trusted wallet for meta transactions
             [crv.address, cvx.address, fxs.address], // yield tokens
@@ -124,12 +126,7 @@ describe("FraxConvex Alluo Vault Upgradeable Tests Native ETH", function () {
         //     cvx.address
         // ]) as AlluoVaultPool;
 
-        alluoPool = await ethers.getContractAt("AlluoVaultPool", "0x470e486acA0e215C925ddcc3A9D446735AabB714");
         await alluoPool.connect(admin).editVault(true, AlluoVault.address);
-
-        await AlluoVault.setPool(alluoPool.address);
-        await AlluoVault.grantRole("0x0000000000000000000000000000000000000000000000000000000000000000", alluoPool.address)
-
     });
 
     afterEach(async () => {
