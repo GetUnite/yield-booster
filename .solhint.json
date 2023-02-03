@@ -23,7 +23,7 @@
         "const-name-snakecase": "error",
         "no-inline-assembly": "off",
         "state-visibility": "error",
-        "var-name-mixedcase": "error",
+        "var-name-mixedcase": "warn",
         "max-states-count": "off"
     },
     "plugins": [

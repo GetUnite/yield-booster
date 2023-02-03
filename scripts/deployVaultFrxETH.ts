@@ -16,7 +16,7 @@ async function main() {
   let AlluoLockedVault = await ethers.getContractFactory("AlluoLockedVault")
   let AlluoVault = await upgrades.deployProxy(AlluoLockedVault, [
     "FrxETH Vault",
-    "FrxETH",
+    "abEth-FrxETH",
     ethFrxEthLp.address, // underlying token
     rewardToken.address, // Curve CVX-ETH Convex Deposit (cvxcrvCVX...)
     alluoPool.address,

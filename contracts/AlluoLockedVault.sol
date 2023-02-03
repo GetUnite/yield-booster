@@ -167,11 +167,10 @@ contract AlluoLockedVault is
     /// @param assets Amount of assets deposited
     /// @param receiver Recipient of shares
     /// @return shares amount of shares minted
-    function deposit(uint256 assets, address receiver)
-        public
-        override
-        returns (uint256 shares)
-    {
+    function deposit(
+        uint256 assets,
+        address receiver
+    ) public override returns (uint256 shares) {
         _distributeReward(msg.sender);
         require(assets <= maxDeposit(receiver));
         shares = previewDeposit(assets);
@@ -184,11 +183,10 @@ contract AlluoLockedVault is
     /// @param assets Amount of assets deposited
     /// @param entryToken token deposited
     /// @return shares amount of shares minted
-    function depositWithoutLP(uint256 assets, address entryToken)
-        external
-        payable
-        returns (uint256 shares)
-    {
+    function depositWithoutLP(
+        uint256 assets,
+        address entryToken
+    ) external payable returns (uint256 shares) {
         _distributeReward(msg.sender);
 
         if (entryToken == NATIVE_ETH) {
@@ -218,11 +216,10 @@ contract AlluoLockedVault is
 
     /** @dev See {IERC4626-mint}.**/
     /// Standard ERC4626 mint function but distributes rewards before deposits
-    function mint(uint256 shares, address receiver)
-        public
-        override
-        returns (uint256 assets)
-    {
+    function mint(
+        uint256 shares,
+        address receiver
+    ) public override returns (uint256 assets) {
         _distributeReward(msg.sender);
         require(shares <= maxMint(receiver));
         assets = previewMint(shares);
@@ -240,11 +237,9 @@ contract AlluoLockedVault is
     /// @dev Called periodically before looping through the rewards and updating reward balances.
     /// @param entryToken entry token to the Alluo Booster Pool.
     /// @return amount amount of entry token transferred to Alluo Booster Pool.
-    function claimAndConvertToPoolEntryToken(address entryToken)
-        external
-        onlyRole(DEFAULT_ADMIN_ROLE)
-        returns (uint256 amount)
-    {
+    function claimAndConvertToPoolEntryToken(
+        address entryToken
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) returns (uint256 amount) {
         claimRewardsFromPool(); // get fxs, cvx, crv
         for (uint256 i; i < yieldTokens.length(); i++) {
             address token = yieldTokens.at(i);
@@ -323,7 +318,9 @@ contract AlluoLockedVault is
     /// @notice Returns rewards per shareholder accrued, both from the vault and from Alluo Booster Pool
     /// @param shareholder owner of vault shares
     /// @return RewardData 2 arrays: vault accruals and pool accruals
-    function shareholderAccruedRewards(address shareholder)
+    function shareholderAccruedRewards(
+        address shareholder
+    )
         public
         view
         returns (RewardData[] memory, IAlluoPool.RewardData[] memory)
@@ -352,7 +349,7 @@ contract AlluoLockedVault is
     /// @param account owner of shares
     function earned(address account) public view returns (uint256) {
         uint256 undistributedRewards = (balanceOf(account) *
-            (rewardsPerShareAccumulated - userRewardPaid[account])) / 10**18;
+            (rewardsPerShareAccumulated - userRewardPaid[account])) / 10 ** 18;
         return undistributedRewards + rewards[account];
     }
 
@@ -439,11 +436,10 @@ contract AlluoLockedVault is
     /// @dev Unwraps claimed lp tokens, exchanges them to the exit token and sends to the user
     /// @param exitToken the token to be transferred to the user
     /// @param receiver Recipient of the tokens
-    function claim(address exitToken, address receiver)
-        external
-        virtual
-        returns (uint256 amount)
-    {
+    function claim(
+        address exitToken,
+        address receiver
+    ) external virtual returns (uint256 amount) {
         Shareholder memory shareholder = userWithdrawals[msg.sender];
         amount = shareholder.withdrawalAvailable;
         if (amount > 0) {
@@ -478,10 +474,9 @@ contract AlluoLockedVault is
     /// @notice Allows users to claim their rewards in an ERC20 supported by the Alluo exchange
     /// @dev Withdraws all reward tokens from the alluo pool and sends it to the user after exchanging it.
     /// @return rewardTokens value of total reward tokens in exitTokens
-    function claimRewards(address exitToken)
-        external
-        returns (uint256 rewardTokens)
-    {
+    function claimRewards(
+        address exitToken
+    ) external returns (uint256 rewardTokens) {
         _distributeReward(msg.sender);
         rewardTokens = rewards[msg.sender];
         if (rewardTokens > 0) {
@@ -632,12 +627,12 @@ contract AlluoLockedVault is
         uint256 totalRewards = IAlluoPool(alluoPool).rewardTokenBalance() -
             vaultRewardsBefore;
         if (totalRewards > 0) {
-            uint256 totalFees = (totalRewards * adminFee) / 10**4;
+            uint256 totalFees = (totalRewards * adminFee) / 10 ** 4;
             uint256 newRewards = totalRewards - totalFees;
             rewards[gnosis] += totalFees;
             if (totalSupply() != 0) {
                 rewardsPerShareAccumulated +=
-                    (newRewards * 10**18) /
+                    (newRewards * 10 ** 18) /
                     totalSupply();
             }
         }
@@ -709,11 +704,9 @@ contract AlluoLockedVault is
                 : 0;
     }
 
-    function _nonLpPreviewDeposit(uint256 assets)
-        internal
-        view
-        returns (uint256)
-    {
+    function _nonLpPreviewDeposit(
+        uint256 assets
+    ) internal view returns (uint256) {
         uint256 supply = totalSupply();
         return
             (assets == 0 || supply == 0)
@@ -740,12 +733,10 @@ contract AlluoLockedVault is
         return true;
     }
 
-    function transfer(address to, uint256 amount)
-        public
-        virtual
-        override(ERC20Upgradeable)
-        returns (bool)
-    {
+    function transfer(
+        address to,
+        uint256 amount
+    ) public virtual override(ERC20Upgradeable) returns (bool) {
         address owner = msg.sender;
         require(
             amount <=
@@ -765,10 +756,9 @@ contract AlluoLockedVault is
         super._beforeTokenTransfer(from, to, amount);
     }
 
-    function changeLockingDuration(uint256 newDuration)
-        external
-        onlyRole(DEFAULT_ADMIN_ROLE)
-    {
+    function changeLockingDuration(
+        uint256 newDuration
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         duration = newDuration;
     }
 
@@ -776,26 +766,21 @@ contract AlluoLockedVault is
         alluoPool = _pool;
     }
 
-    function isTrustedForwarder(address forwarder)
-        public
-        view
-        virtual
-        returns (bool)
-    {
+    function isTrustedForwarder(
+        address forwarder
+    ) public view virtual returns (bool) {
         return forwarder == trustedForwarder;
     }
 
-    function setTrustedForwarder(address newTrustedForwarder)
-        external
-        onlyRole(DEFAULT_ADMIN_ROLE)
-    {
+    function setTrustedForwarder(
+        address newTrustedForwarder
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         trustedForwarder = newTrustedForwarder;
     }
 
-    function changeUpgradeStatus(bool _status)
-        external
-        onlyRole(DEFAULT_ADMIN_ROLE)
-    {
+    function changeUpgradeStatus(
+        bool _status
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         upgradeStatus = _status;
     }
 
@@ -803,22 +788,19 @@ contract AlluoLockedVault is
         adminFee = fee;
     }
 
-    function grantRole(bytes32 role, address account)
-        public
-        override
-        onlyRole(getRoleAdmin(role))
-    {
+    function grantRole(
+        bytes32 role,
+        address account
+    ) public override onlyRole(getRoleAdmin(role)) {
         if (role == DEFAULT_ADMIN_ROLE) {
             require(account.isContract());
         }
         _grantRole(role, account);
     }
 
-    function _authorizeUpgrade(address)
-        internal
-        override
-        onlyRole(UPGRADER_ROLE)
-    {
+    function _authorizeUpgrade(
+        address
+    ) internal override onlyRole(UPGRADER_ROLE) {
         require(upgradeStatus);
         upgradeStatus = false;
     }
