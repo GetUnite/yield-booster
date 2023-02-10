@@ -18,7 +18,8 @@ const config: HardhatUserConfig = {
     settings: {
       optimizer: {
         enabled: true,
-        runs: 200,
+        runs: 0,
+        // details: { yul: false },
       },
     },
   },
@@ -27,12 +28,13 @@ const config: HardhatUserConfig = {
       // forking: {
       //   enabled: process.env.FORKING_ENABLED == "true",
       //   url: process.env.MAINNET_FORKING_URL as string,
-      //   blockNumber: 14785940
+      //   blockNumber: 16428096
       // }
+      allowUnlimitedContractSize: true,
     },
     mainnet: {
       url: process.env.MAINNET_URL,
-      gasPrice: 17000000000,
+      gasPrice: "auto",
       accounts: {
         mnemonic: process.env.MNEMONIC,
       },
@@ -80,13 +82,13 @@ const config: HardhatUserConfig = {
         mnemonic: process.env.MNEMONIC,
       },
     },
-    sepolia: {
-      url: process.env.SEPOLIA_URL,
-      gasPrice: "auto",
-      accounts: {
-        mnemonic: process.env.MNEMONIC,
-      },
-    },
+    // sepolia: {
+    //   url: process.env.SEPOLIA_URL,
+    //   gasPrice: "auto",
+    //   accounts: {
+    //     mnemonic: process.env.MNEMONIC,
+    //   },
+    // },
   },
 
   gasReporter: {
@@ -96,7 +98,7 @@ const config: HardhatUserConfig = {
   etherscan: {
     apiKey: process.env.ETHERSCAN_API_KEY,
     // apiKey: process.env.FTMSCAN_API_KEY,
-        // apiKey: process.env.POLYGONSCAN_API_KEY,
+    // apiKey: process.env.POLYGONSCAN_API_KEY,
 
 
   },
