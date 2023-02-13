@@ -17,6 +17,7 @@ import "./interfaces/ICvxBooster.sol";
 import "./interfaces/ICvxBaseRewardPool.sol";
 import "./interfaces/ICurvePool.sol";
 import "./interfaces/IAlluoVault.sol";
+import "hardhat/console.sol";
 
 contract AlluoVaultPool is
     Initializable,
@@ -34,6 +35,8 @@ contract AlluoVaultPool is
 
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     bytes32 public constant VAULT = keccak256("VAULT");
+    bytes32 public constant REWARDS_DISTRIBUTOR =
+        keccak256("REWARDS_DISTRIBUTOR");
 
     bool public upgradeStatus;
 
@@ -189,9 +192,11 @@ contract AlluoVaultPool is
                 : (assets * totalBalances) / fundsLocked();
     }
 
-    function _convertToAssets(
-        uint256 shares
-    ) internal view returns (uint256 assets) {
+    function _convertToAssets(uint256 shares)
+        internal
+        view
+        returns (uint256 assets)
+    {
         return
             (totalBalances == 0)
                 ? shares
@@ -221,6 +226,25 @@ contract AlluoVaultPool is
         (, , , address pool, , ) = CVX_BOOSTER.poolInfo(poolId);
         ICvxBaseRewardPool(pool).withdrawAndUnwrap(amount, true);
         rewardToken.safeTransfer(msg.sender, amount);
+    }
+
+    function withdrawDelegate(address[] memory vaults, uint256[] memory amounts)
+        external
+        onlyRole(REWARDS_DISTRIBUTOR)
+        returns (uint256 totalRewardsToWithdraw)
+    {
+        for (uint256 i; i < vaults.length; i++) {
+            uint256 shares = _convertToShares(amounts[i]);
+            balances[vaults[i]] -= shares;
+            totalBalances -= shares;
+            totalRewardsToWithdraw += amounts[i];
+        }
+        (, , , address pool, , ) = CVX_BOOSTER.poolInfo(poolId);
+        ICvxBaseRewardPool(pool).withdrawAndUnwrap(
+            totalRewardsToWithdraw,
+            true
+        );
+        rewardToken.safeTransfer(msg.sender, totalRewardsToWithdraw);
     }
 
     function accruedRewards() public view returns (RewardData[] memory) {
@@ -263,10 +287,10 @@ contract AlluoVaultPool is
         ICvxBaseRewardPool(rewardPool).getReward();
     }
 
-    function editVault(
-        bool add,
-        address _vault
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function editVault(bool add, address _vault)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
         if (add) {
             vaults.add(_vault);
             _grantRole(VAULT, _vault);
@@ -276,10 +300,10 @@ contract AlluoVaultPool is
         }
     }
 
-    function editYieldTokens(
-        bool add,
-        address _yieldToken
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function editYieldTokens(bool add, address _yieldToken)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
         if (add) {
             yieldTokens.add(_yieldToken);
         } else {
@@ -287,15 +311,17 @@ contract AlluoVaultPool is
         }
     }
 
-    function changeEntryToken(
-        address _entryToken
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function changeEntryToken(address _entryToken)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
         entryToken = IERC20MetadataUpgradeable(_entryToken);
     }
 
-    function changeUpgradeStatus(
-        bool _status
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function changeUpgradeStatus(bool _status)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
         upgradeStatus = _status;
     }
 
@@ -307,19 +333,22 @@ contract AlluoVaultPool is
         _unpause();
     }
 
-    function grantRole(
-        bytes32 role,
-        address account
-    ) public override onlyRole(getRoleAdmin(role)) {
+    function grantRole(bytes32 role, address account)
+        public
+        override
+        onlyRole(getRoleAdmin(role))
+    {
         if (role == DEFAULT_ADMIN_ROLE) {
             require(account.isContract(), "Not contract");
         }
         _grantRole(role, account);
     }
 
-    function _authorizeUpgrade(
-        address
-    ) internal override onlyRole(UPGRADER_ROLE) {
+    function _authorizeUpgrade(address)
+        internal
+        override
+        onlyRole(UPGRADER_ROLE)
+    {
         require(upgradeStatus, "Upgrade not allowed");
         upgradeStatus = false;
     }

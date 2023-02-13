@@ -39,6 +39,7 @@ contract AlluoVaultUpgradeable is
 
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     bytes32 public constant GELATO = keccak256("GELATO");
+    bytes32 public constant REWARDS_DISTRIBUTOR = keccak256("REWARDS_DISTRIBUTOR");
 
     address public trustedForwarder;
     bool public upgradeStatus;
@@ -121,21 +122,21 @@ contract AlluoVaultUpgradeable is
         uint256 vaultRewardAfter = IAlluoPool(alluoPool).rewardTokenBalance();
         uint256 totalRewards = vaultRewardAfter - vaultRewardsBefore;
         if (totalRewards > 0) {
-            uint256 totalFees = (totalRewards * adminFee) / 10 ** 4;
+            uint256 totalFees = (totalRewards * adminFee) / 10**4;
             uint256 newRewards = totalRewards - totalFees;
             rewards[gnosis] += totalFees;
-            rewardsPerShareAccumulated +=
-                (newRewards * 10 ** 18) /
-                totalSupply();
+            rewardsPerShareAccumulated += (newRewards * 10**18) / totalSupply();
         }
         console.log("Vault reward after", vaultRewardAfter);
         console.log("Vault rewards before", vaultRewardsBefore);
         console.log("Total rewards", totalRewards);
     }
 
-    function claimAndConvertToPoolEntryToken(
-        address entryToken
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) returns (uint256) {
+    function claimAndConvertToPoolEntryToken(address entryToken)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+        returns (uint256)
+    {
         claimRewardsFromPool();
         for (uint256 i; i < yieldTokens.length(); i++) {
             address token = yieldTokens.at(i);
@@ -188,9 +189,7 @@ contract AlluoVaultUpgradeable is
         return rewardArray;
     }
 
-    function shareholderAccruedRewards(
-        address shareholder
-    )
+    function shareholderAccruedRewards(address shareholder)
         public
         view
         returns (RewardData[] memory, IAlluoPool.RewardData[] memory)
@@ -261,7 +260,7 @@ contract AlluoVaultUpgradeable is
         uint256 rewardsDelta = rewardsPerShareAccumulated -
             userRewardPaid[account];
         uint256 undistributedRewards = (balanceOf(account) * rewardsDelta) /
-            10 ** 18;
+            10**18;
         return undistributedRewards + rewards[account];
     }
 
@@ -270,10 +269,11 @@ contract AlluoVaultUpgradeable is
     /// @param assets Amount of assets deposited
     /// @param receiver Recipient of shares
     /// @return New amount of shares minted
-    function deposit(
-        uint256 assets,
-        address receiver
-    ) public override returns (uint256) {
+    function deposit(uint256 assets, address receiver)
+        public
+        override
+        returns (uint256)
+    {
         _distributeReward(_msgSender());
         require(
             assets <= maxDeposit(receiver),
@@ -290,10 +290,10 @@ contract AlluoVaultUpgradeable is
     /// @param assets Amount of assets deposited
     /// @param entryToken Recipient of shares
     /// @return New amount of shares minted
-    function depositWithoutLP(
-        uint256 assets,
-        address entryToken
-    ) public returns (uint256) {
+    function depositWithoutLP(uint256 assets, address entryToken)
+        public
+        returns (uint256)
+    {
         _distributeReward(_msgSender());
         IERC20MetadataUpgradeable(entryToken).safeTransferFrom(
             _msgSender(),
@@ -322,9 +322,11 @@ contract AlluoVaultUpgradeable is
                 : 0;
     }
 
-    function _nonLpPreviewDeposit(
-        uint256 assets
-    ) internal view returns (uint256) {
+    function _nonLpPreviewDeposit(uint256 assets)
+        internal
+        view
+        returns (uint256)
+    {
         uint256 supply = totalSupply();
         return
             (assets == 0 || supply == 0)
@@ -338,10 +340,11 @@ contract AlluoVaultUpgradeable is
 
     /** @dev See {IERC4626-mint}.**/
     /// Standard ERC4626 mint function but distributes rewards before deposits
-    function mint(
-        uint256 shares,
-        address receiver
-    ) public override returns (uint256) {
+    function mint(uint256 shares, address receiver)
+        public
+        override
+        returns (uint256)
+    {
         _distributeReward(_msgSender());
         require(shares <= maxMint(receiver), "ERC4626: mint more than max");
         uint256 assets = previewMint(shares);
@@ -431,6 +434,15 @@ contract AlluoVaultUpgradeable is
         return rewardTokens;
     }
 
+    function claimRewardsDelegate(address owner) external onlyRole(REWARDS_DISTRIBUTOR) returns (uint256) {
+        _distributeReward(owner);
+        uint256 rewardTokens = rewards[owner];
+        if (rewardTokens > 0) {
+            rewards[owner] = 0;
+        }
+        return rewardTokens;
+    }
+
     /// @notice Allows users to claim their rewards in an ERC20 supported by the Alluo exchange
     /// @dev Withdraws all reward tokens from the alluo pool and sends it to the user after exchanging it.
     /// @return Uint256 value of total reward tokens in exitTokens
@@ -499,27 +511,33 @@ contract AlluoVaultUpgradeable is
         alluoPool = _pool;
     }
 
-    function addPoolTokens(
-        address _token
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function addPoolTokens(address _token)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
         poolTokens.add(_token);
     }
 
-    function isTrustedForwarder(
-        address forwarder
-    ) public view virtual returns (bool) {
+    function isTrustedForwarder(address forwarder)
+        public
+        view
+        virtual
+        returns (bool)
+    {
         return forwarder == trustedForwarder;
     }
 
-    function setTrustedForwarder(
-        address newTrustedForwarder
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setTrustedForwarder(address newTrustedForwarder)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
         trustedForwarder = newTrustedForwarder;
     }
 
-    function changeUpgradeStatus(
-        bool _status
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function changeUpgradeStatus(bool _status)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
         upgradeStatus = _status;
     }
 
@@ -535,10 +553,11 @@ contract AlluoVaultUpgradeable is
         adminFee = fee;
     }
 
-    function grantRole(
-        bytes32 role,
-        address account
-    ) public override onlyRole(getRoleAdmin(role)) {
+    function grantRole(bytes32 role, address account)
+        public
+        override
+        onlyRole(getRoleAdmin(role))
+    {
         if (role == DEFAULT_ADMIN_ROLE) {
             require(account.isContract(), "AlluoVault: Not contract");
         }
@@ -576,9 +595,11 @@ contract AlluoVaultUpgradeable is
         }
     }
 
-    function _authorizeUpgrade(
-        address
-    ) internal override onlyRole(UPGRADER_ROLE) {
+    function _authorizeUpgrade(address)
+        internal
+        override
+        onlyRole(UPGRADER_ROLE)
+    {
         require(upgradeStatus, "IbAlluo: Upgrade not allowed");
         upgradeStatus = false;
     }
