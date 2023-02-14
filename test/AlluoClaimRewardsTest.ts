@@ -34,7 +34,8 @@ describe("Alluo Claim Rewards Tests", function () {
     let ethFrxEthLp: IERC20MetadataUpgradeable;
     let rewardToken: IERC20MetadataUpgradeable;
     let cvxEth: IERC20MetadataUpgradeable;
-    let alluoPool: IAlluoPool;
+    let alluoPool1: IAlluoPool;
+    let alluoPool2: IAlluoPool;
     let ethFrxEthPool: IFraxFarmERC20;
     let fxs: IERC20MetadataUpgradeable;
 
@@ -149,11 +150,22 @@ describe("Alluo Claim Rewards Tests", function () {
 
         let PoolVaultFactory = await ethers.getContractFactory("AlluoVaultPool");
 
-        alluoPool = await upgrades.deployProxy(PoolVaultFactory, [
+        alluoPool1 = await upgrades.deployProxy(PoolVaultFactory, [
             rewardToken.address,
             gnosis,
             [crv.address, cvx.address],
-            [AlluoVault1.address, AlluoVault2.address, AlluoVault3.address],
+            [AlluoVault1.address, AlluoVault2.address],
+            "0xB576491F1E6e5E62f1d8F26062Ee822B40B0E0d4", // Pool address
+            64, //Pool number convex
+            cvx.address
+        ]) as AlluoVaultPool
+
+
+        alluoPool2 = await upgrades.deployProxy(PoolVaultFactory, [
+            rewardToken.address,
+            gnosis,
+            [crv.address, cvx.address],
+            [AlluoVault3.address],
             "0xB576491F1E6e5E62f1d8F26062Ee822B40B0E0d4", // Pool address
             64, //Pool number convex
             cvx.address
@@ -162,32 +174,55 @@ describe("Alluo Claim Rewards Tests", function () {
         let Rewards = await ethers.getContractFactory("AlluoRewardsDistributor");
         rewardsDistributor = await upgrades.deployProxy(Rewards, [
             rewardToken.address,
-            [AlluoVault1.address, AlluoVault2.address, AlluoVault3.address],
-            alluoPool.address,
+            [alluoPool1.address, alluoPool2.address],
             gnosis
         ]) as AlluoRewardsDistributor;
 
-        await AlluoVault1.setPool(alluoPool.address);
-        await AlluoVault2.setPool(alluoPool.address);
-        await AlluoVault3.setPool(alluoPool.address);
+        await AlluoVault1.setPool(alluoPool1.address);
+        await AlluoVault2.setPool(alluoPool1.address);
+        await AlluoVault3.setPool(alluoPool2.address);
 
-        await AlluoVault1.grantRole("0x0000000000000000000000000000000000000000000000000000000000000000", alluoPool.address)
-        await AlluoVault2.grantRole("0x0000000000000000000000000000000000000000000000000000000000000000", alluoPool.address)
-        await AlluoVault3.grantRole("0x0000000000000000000000000000000000000000000000000000000000000000", alluoPool.address)
+        await AlluoVault1.grantRole("0x0000000000000000000000000000000000000000000000000000000000000000", alluoPool1.address)
+        await AlluoVault2.grantRole("0x0000000000000000000000000000000000000000000000000000000000000000", alluoPool1.address)
+        await AlluoVault3.grantRole("0x0000000000000000000000000000000000000000000000000000000000000000", alluoPool2.address)
 
-        await AlluoVault1.grantRole("0x0000000000000000000000000000000000000000000000000000000000000000", alluoPool.address)
-        await AlluoVault2.grantRole("0x0000000000000000000000000000000000000000000000000000000000000000", alluoPool.address)
-        await AlluoVault3.grantRole("0x0000000000000000000000000000000000000000000000000000000000000000", alluoPool.address)
-
-        await alluoPool.grantRole("0x9905c085208a82a3078cc48cae77ac6481e28f57de8eb7c3f515cba4aa724a26", rewardsDistributor.address);
+        await alluoPool1.grantRole("0x9905c085208a82a3078cc48cae77ac6481e28f57de8eb7c3f515cba4aa724a26", rewardsDistributor.address);
+        await alluoPool2.grantRole("0x9905c085208a82a3078cc48cae77ac6481e28f57de8eb7c3f515cba4aa724a26", rewardsDistributor.address);
         await AlluoVault1.grantRole("0x9905c085208a82a3078cc48cae77ac6481e28f57de8eb7c3f515cba4aa724a26", rewardsDistributor.address);
         await AlluoVault2.grantRole("0x9905c085208a82a3078cc48cae77ac6481e28f57de8eb7c3f515cba4aa724a26", rewardsDistributor.address);
         await AlluoVault3.grantRole("0x9905c085208a82a3078cc48cae77ac6481e28f57de8eb7c3f515cba4aa724a26", rewardsDistributor.address);
 
+        await rewardsDistributor.editVaults(true, alluoPool1.address, [AlluoVault1.address, AlluoVault2.address]);
+        await rewardsDistributor.editVaults(true, alluoPool2.address, [AlluoVault3.address])
 
     });
 
-    it("Claim in other exit token", async () => {
+    it("Claim in reward token from one pool", async () => {
+
+        const lpBalance = await cvxEth.balanceOf(signers[0].address);
+        const deposit = lpBalance.div(4)
+        await cvxEth.approve(AlluoVault1.address, ethers.constants.MaxUint256);
+        await AlluoVault1.deposit(deposit, signers[0].address);
+        await AlluoVault1.stakeUnderlying();
+
+        await skipDays(0.01);
+        await alluoPool1.farm();
+        await skipDays(7);
+
+        expect(Number(await AlluoVault1.earned(signers[0].address))).greaterThan(0)
+        const vaultBalance1 = await alluoPool1.balances(AlluoVault1.address);
+
+        console.log('balance reward token before', await rewardToken.balanceOf(signers[0].address));
+        await rewardsDistributor.claimAllFromPool(rewardToken.address, alluoPool1.address);
+        console.log('\nbalance reward token  after', await rewardToken.balanceOf(signers[0].address));
+
+        const vaultBalance1after = await alluoPool1.balances(AlluoVault1.address);
+        expect(vaultBalance1after).to.be.lt(vaultBalance1);
+        expect(Number(await AlluoVault1.earned(signers[0].address))).to.be.eq(0)
+
+    })
+
+    it("Claim in other exit token from one pool", async () => {
 
         const lpBalance = await cvxEth.balanceOf(signers[0].address);
         const deposit = lpBalance.div(4)
@@ -200,37 +235,29 @@ describe("Alluo Claim Rewards Tests", function () {
         await AlluoVault2.deposit(lpBalance2, signers[0].address);
         await AlluoVault2.stakeUnderlying();
 
-        const amount = parseEther("100");
-        await AlluoVault3.depositWithoutLP(amount, "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", { value: amount });
-        await AlluoVault3.stakeUnderlying();
-
         await skipDays(0.01);
-        await alluoPool.farm();
+        await alluoPool1.farm();
         await skipDays(7);
 
         expect(Number(await AlluoVault1.earned(signers[0].address))).greaterThan(0)
         expect(Number(await AlluoVault2.earned(signers[0].address))).greaterThan(0)
-        expect(Number(await AlluoVault3.earned(signers[0].address))).greaterThan(0)
+        console.log('here')
 
-        const vaultBalance1 = await alluoPool.balances(AlluoVault1.address);
-        const vaultBalance2 = await alluoPool.balances(AlluoVault2.address);
-        const vaultBalance3 = await alluoPool.balances(AlluoVault3.address);
+        const vaultBalance1 = await alluoPool1.balances(AlluoVault1.address);
+        const vaultBalance2 = await alluoPool1.balances(AlluoVault2.address);
 
         console.log('balance usdc before', await usdc.balanceOf(signers[0].address));
-        await rewardsDistributor.claimAll(usdc.address);
+        await rewardsDistributor.claimAllFromPool(usdc.address, alluoPool1.address);
         console.log('\nbalance usdc after', await usdc.balanceOf(signers[0].address));
 
-        const vaultBalance1after = await alluoPool.balances(AlluoVault1.address);
-        const vaultBalance2after = await alluoPool.balances(AlluoVault2.address);
-        const vaultBalance3after = await alluoPool.balances(AlluoVault3.address);
+        const vaultBalance1after = await alluoPool1.balances(AlluoVault1.address);
+        const vaultBalance2after = await alluoPool1.balances(AlluoVault2.address);
 
         expect(vaultBalance1after).to.be.lt(vaultBalance1);
         expect(vaultBalance2after).to.be.lt(vaultBalance2);
-        expect(vaultBalance3after).to.be.lt(vaultBalance3);
 
         expect(Number(await AlluoVault1.earned(signers[0].address))).to.be.eq(0)
         expect(Number(await AlluoVault2.earned(signers[0].address))).to.be.eq(0)
-        expect(Number(await AlluoVault3.earned(signers[0].address))).to.be.eq(0)
 
     })
 
@@ -253,18 +280,249 @@ describe("Alluo Claim Rewards Tests", function () {
 
         await skipDays(0.01);
 
-        await alluoPool.farm();
+        await alluoPool1.farm();
 
-        const tokens = await rewardsDistributor.connect(signers[1]).claimAll(usdc.address);
-        const tokens2 = await rewardsDistributor.claimAll(usdc.address);
+        const tokens = await rewardsDistributor.connect(signers[1]).claimAllFromPool(usdc.address, alluoPool1.address);
+        const tokens2 = await rewardsDistributor.claimAllFromPool(usdc.address, alluoPool1.address);
 
         // console.log(tokens.value);
         expect(tokens.value).to.be.eq(0);
         expect(tokens2.value).to.be.eq(0);
 
-
-
     });
 
+    it("Claim from all pools", async () => {
+
+        const lpBalance = await cvxEth.balanceOf(signers[0].address);
+        const deposit = lpBalance.div(4)
+        await cvxEth.approve(AlluoVault1.address, ethers.constants.MaxUint256);
+        await AlluoVault1.deposit(deposit, signers[0].address);
+        await AlluoVault1.stakeUnderlying();
+
+        const lpBalance2 = await fraxUSDC.balanceOf(signers[0].address);
+        await fraxUSDC.approve(AlluoVault2.address, ethers.constants.MaxUint256);
+        await AlluoVault2.deposit(lpBalance2, signers[0].address);
+        await AlluoVault2.stakeUnderlying();
+
+        const amount = parseEther("100");
+        await AlluoVault3.depositWithoutLP(amount, "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", { value: amount });
+        await AlluoVault3.stakeUnderlying();
+
+        await skipDays(0.01);
+        await alluoPool1.farm();
+        await alluoPool2.farm();
+        await skipDays(7);
+
+        expect(Number(await AlluoVault1.earned(signers[0].address))).greaterThan(0)
+        expect(Number(await AlluoVault2.earned(signers[0].address))).greaterThan(0)
+        console.log('here')
+        expect(Number(await AlluoVault3.earned(signers[0].address))).greaterThan(0)
+
+        const vaultBalance1 = await alluoPool1.balances(AlluoVault1.address);
+        const vaultBalance2 = await alluoPool1.balances(AlluoVault2.address);
+        const vaultBalance3 = await alluoPool2.balances(AlluoVault3.address);
+
+        console.log('balance usdc before', await usdc.balanceOf(signers[0].address));
+        await rewardsDistributor.claimAllFromPool(usdc.address, alluoPool1.address);
+        console.log('\nbalance usdc after', await usdc.balanceOf(signers[0].address));
+
+        const vaultBalance1after = await alluoPool1.balances(AlluoVault1.address);
+        const vaultBalance2after = await alluoPool1.balances(AlluoVault2.address);
+        const vaultBalance3after = await alluoPool2.balances(AlluoVault3.address);
+
+        expect(vaultBalance1after).to.be.lt(vaultBalance1);
+        expect(vaultBalance2after).to.be.lt(vaultBalance2);
+        expect(vaultBalance3after).to.be.eq(vaultBalance3); // since we only claimed from one pool linked to 2 vaults
+
+        expect(Number(await AlluoVault1.earned(signers[0].address))).to.be.eq(0)
+        expect(Number(await AlluoVault2.earned(signers[0].address))).to.be.eq(0)
+        console.log('here')
+
+        expect(Number(await AlluoVault3.earned(signers[0].address))).to.be.gt(0)
+
+        console.log('\nbalance WETH before', await weth.balanceOf(signers[0].address));
+
+        await rewardsDistributor.claimFromAllPools(weth.address);
+
+        console.log('\nbalance WETH after', await weth.balanceOf(signers[0].address));
+
+
+    })
+
+    it("Remove vault from pool", async () => {
+
+        await rewardsDistributor.editVaults(false, alluoPool2.address, [AlluoVault3.address]);
+
+        const lpBalance = await cvxEth.balanceOf(signers[0].address);
+        const deposit = lpBalance.div(4)
+        await cvxEth.approve(AlluoVault1.address, ethers.constants.MaxUint256);
+        await AlluoVault1.deposit(deposit, signers[0].address);
+        await AlluoVault1.stakeUnderlying();
+
+        const lpBalance2 = await fraxUSDC.balanceOf(signers[0].address);
+        await fraxUSDC.approve(AlluoVault2.address, ethers.constants.MaxUint256);
+        await AlluoVault2.deposit(lpBalance2, signers[0].address);
+        await AlluoVault2.stakeUnderlying();
+
+        const amount = parseEther("100");
+        await AlluoVault3.depositWithoutLP(amount, "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", { value: amount });
+        await AlluoVault3.stakeUnderlying();
+
+        await skipDays(0.01);
+        await alluoPool1.farm();
+        await alluoPool2.farm();
+        await skipDays(7);
+
+        expect(Number(await AlluoVault1.earned(signers[0].address))).greaterThan(0)
+        expect(Number(await AlluoVault2.earned(signers[0].address))).greaterThan(0)
+        expect(Number(await AlluoVault3.earned(signers[0].address))).greaterThan(0)
+
+        const vaultBalance1 = await alluoPool1.balances(AlluoVault1.address);
+        const vaultBalance2 = await alluoPool1.balances(AlluoVault2.address);
+        const vaultBalance3 = await alluoPool2.balances(AlluoVault3.address);
+
+        console.log('balance usdc before', await usdc.balanceOf(signers[0].address));
+        await rewardsDistributor.claimAllFromPool(usdc.address, alluoPool1.address);
+        console.log('\nbalance usdc after', await usdc.balanceOf(signers[0].address));
+
+        const vaultBalance1after = await alluoPool1.balances(AlluoVault1.address);
+        const vaultBalance2after = await alluoPool1.balances(AlluoVault2.address);
+        const vaultBalance3after = await alluoPool2.balances(AlluoVault3.address);
+
+        expect(vaultBalance1after).to.be.lt(vaultBalance1);
+        expect(vaultBalance2after).to.be.lt(vaultBalance2);
+        expect(vaultBalance3after).to.be.eq(vaultBalance3); // since we only claimed from one pool linked to 2 vaults
+
+        expect(Number(await AlluoVault1.earned(signers[0].address))).to.be.eq(0)
+        expect(Number(await AlluoVault2.earned(signers[0].address))).to.be.eq(0)
+        expect(Number(await AlluoVault3.earned(signers[0].address))).to.be.gt(0)
+
+        const wethBefore = await weth.balanceOf(signers[0].address);
+        console.log('\nbalance WETH before', wethBefore);
+
+        await rewardsDistributor.claimFromAllPools(weth.address);
+        const wethAfter = await weth.balanceOf(signers[0].address);
+        console.log('\nbalance WETH after', wethAfter);
+        expect(wethAfter).to.be.eq(wethBefore);
+
+    })
+
+    it("Remove the pool from rewards distributor", async () => {
+
+        await rewardsDistributor.editVaults(false, alluoPool2.address, [AlluoVault3.address]);
+        await rewardsDistributor.editPool(false, alluoPool2.address);
+
+        const lpBalance = await cvxEth.balanceOf(signers[0].address);
+        const deposit = lpBalance.div(4)
+        await cvxEth.approve(AlluoVault1.address, ethers.constants.MaxUint256);
+        await AlluoVault1.deposit(deposit, signers[0].address);
+        await AlluoVault1.stakeUnderlying();
+
+        const lpBalance2 = await fraxUSDC.balanceOf(signers[0].address);
+        await fraxUSDC.approve(AlluoVault2.address, ethers.constants.MaxUint256);
+        await AlluoVault2.deposit(lpBalance2, signers[0].address);
+        await AlluoVault2.stakeUnderlying();
+
+        const amount = parseEther("100");
+        await AlluoVault3.depositWithoutLP(amount, "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", { value: amount });
+        await AlluoVault3.stakeUnderlying();
+
+        await skipDays(0.01);
+        await alluoPool1.farm();
+        await alluoPool2.farm();
+        await skipDays(7);
+
+        expect(Number(await AlluoVault1.earned(signers[0].address))).greaterThan(0)
+        expect(Number(await AlluoVault2.earned(signers[0].address))).greaterThan(0)
+        expect(Number(await AlluoVault3.earned(signers[0].address))).greaterThan(0)
+
+        const vaultBalance1 = await alluoPool1.balances(AlluoVault1.address);
+        const vaultBalance2 = await alluoPool1.balances(AlluoVault2.address);
+        const vaultBalance3 = await alluoPool2.balances(AlluoVault3.address);
+
+        console.log('balance usdc before', await usdc.balanceOf(signers[0].address));
+        await rewardsDistributor.claimAllFromPool(usdc.address, alluoPool1.address);
+        console.log('\nbalance usdc after', await usdc.balanceOf(signers[0].address));
+
+        const vaultBalance1after = await alluoPool1.balances(AlluoVault1.address);
+        const vaultBalance2after = await alluoPool1.balances(AlluoVault2.address);
+        const vaultBalance3after = await alluoPool2.balances(AlluoVault3.address);
+
+        expect(vaultBalance1after).to.be.lt(vaultBalance1);
+        expect(vaultBalance2after).to.be.lt(vaultBalance2);
+        expect(vaultBalance3after).to.be.eq(vaultBalance3); // since we only claimed from one pool linked to 2 vaults
+
+        expect(Number(await AlluoVault1.earned(signers[0].address))).to.be.eq(0)
+        expect(Number(await AlluoVault2.earned(signers[0].address))).to.be.eq(0)
+        expect(Number(await AlluoVault3.earned(signers[0].address))).to.be.gt(0)
+
+        const wethBefore = await weth.balanceOf(signers[0].address);
+        console.log('\nbalance WETH before', wethBefore);
+
+        await rewardsDistributor.claimFromAllPools(weth.address);
+        const wethAfter = await weth.balanceOf(signers[0].address);
+        console.log('\nbalance WETH after', wethAfter);
+        expect(wethAfter).to.be.eq(wethBefore);
+
+    })
+
+    it("Add the pool to rewards distributor", async () => {
+
+        await rewardsDistributor.editPool(false, alluoPool2.address);
+
+        const lpBalance = await cvxEth.balanceOf(signers[0].address);
+        const deposit = lpBalance.div(4)
+        await cvxEth.approve(AlluoVault1.address, ethers.constants.MaxUint256);
+        await AlluoVault1.deposit(deposit, signers[0].address);
+        await AlluoVault1.stakeUnderlying();
+
+        const amount = parseEther("100");
+        await AlluoVault3.depositWithoutLP(amount, "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", { value: amount });
+        await AlluoVault3.stakeUnderlying();
+
+        await skipDays(0.01);
+        await alluoPool1.farm();
+        await alluoPool2.farm();
+        await skipDays(7);
+
+        expect(Number(await AlluoVault1.earned(signers[0].address))).greaterThan(0)
+        expect(Number(await AlluoVault3.earned(signers[0].address))).greaterThan(0)
+
+        const vaultBalance1 = await alluoPool1.balances(AlluoVault1.address);
+        const vaultBalance3 = await alluoPool2.balances(AlluoVault3.address);
+
+        console.log('balance usdc before', await usdc.balanceOf(signers[0].address));
+        await rewardsDistributor.claimAllFromPool(usdc.address, alluoPool1.address);
+        console.log('\nbalance usdc after', await usdc.balanceOf(signers[0].address));
+
+        const vaultBalance1after = await alluoPool1.balances(AlluoVault1.address);
+        const vaultBalance3after = await alluoPool2.balances(AlluoVault3.address);
+
+        expect(vaultBalance1after).to.be.lt(vaultBalance1);
+        expect(vaultBalance3after).to.be.eq(vaultBalance3); // since we only claimed from one pool linked to 2 vaults
+
+        expect(Number(await AlluoVault1.earned(signers[0].address))).to.be.eq(0)
+        expect(Number(await AlluoVault3.earned(signers[0].address))).to.be.gt(0)
+
+        const wethBefore = await weth.balanceOf(signers[0].address);
+
+        await rewardsDistributor.claimFromAllPools(weth.address);
+        const wethAfter = await weth.balanceOf(signers[0].address);
+        expect(wethAfter).to.be.eq(wethBefore);
+
+        await rewardsDistributor.editPool(true, alluoPool2.address);
+        await rewardsDistributor.editVaults(true, alluoPool2.address, [AlluoVault3.address]);
+        await rewardsDistributor.claimFromAllPools(weth.address);
+        console.log('\nbalance WETH after', await weth.balanceOf(signers[0].address));
+        expect(await weth.balanceOf(signers[0].address)).to.be.gt(wethBefore)
+
+
+    })
+
+    it("Should revert admin roles", async () => {
+
+        await expect(rewardsDistributor.connect(signers[1]).editVaults(false, alluoPool2.address, [AlluoVault3.address])).to.be.reverted;
+        await expect(rewardsDistributor.connect(signers[1]).editPool(false, alluoPool2.address)).to.be.reverted;
+    })
 })
 

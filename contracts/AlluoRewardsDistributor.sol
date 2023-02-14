@@ -30,9 +30,10 @@ contract AlluoRewardsDistributor is
 
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
 
-    address public alluoPool;
     address public rewardToken;
-    EnumerableSetUpgradeable.AddressSet private vaults;
+    EnumerableSetUpgradeable.AddressSet private pools;
+    mapping(address => EnumerableSetUpgradeable.AddressSet)
+        private poolToVaults;
 
     bool public upgradeStatus;
 
@@ -45,23 +46,16 @@ contract AlluoRewardsDistributor is
 
     function initialize(
         address _rewardToken,
-        address[] memory _vaults,
-        // address[] memory _pools,
-        address _alluoPool,
+        address[] memory _pools,
         address _multiSigWallet
     ) public initializer {
         __AccessControl_init();
         __UUPSUpgradeable_init();
         rewardToken = _rewardToken;
-        alluoPool = _alluoPool;
 
-        for (uint256 j; j < _vaults.length; j++) {
-            vaults.add(_vaults[j]);
+        for (uint256 j; j < _pools.length; j++) {
+            pools.add(_pools[j]);
         }
-
-        // for (uint256 j; j < _pools.length; j++) {
-        //     pools.add(_pools[j]);
-        // }
 
         require(_multiSigWallet.isContract(), "AlluoRewardsDist: !contract");
         _grantRole(DEFAULT_ADMIN_ROLE, _multiSigWallet);
@@ -71,28 +65,35 @@ contract AlluoRewardsDistributor is
         _grantRole(UPGRADER_ROLE, msg.sender);
     }
 
-    function claimAll(address exitToken)
+    function claimAllFromPool(address exitToken, address alluoPool)
         external
         returns (uint256 totalRewards)
     {
+        _claimAllFromPool(exitToken, alluoPool, msg.sender);
+    }
+
+    function _claimAllFromPool(
+        address exitToken,
+        address alluoPool,
+        address owner
+    ) internal returns (uint256 totalRewards) {
         uint256 totalClaimableRewards;
+        EnumerableSetUpgradeable.AddressSet storage vaults = poolToVaults[
+            alluoPool
+        ];
         uint256 length = vaults.length();
+
         address[] memory userVaults = new address[](length);
         uint256[] memory amounts = new uint256[](length);
 
         for (uint256 j; j < length; j++) {
             address vault = vaults.at(j);
-            uint256 userRewards = IAlluoVault(vault).earned(msg.sender);
-
             userVaults[j] = vault;
-            amounts[j] = userRewards;
-            if (userRewards > 0) {
-                // update the mapping in the vaults
-                totalClaimableRewards = IAlluoVault(vault).claimRewardsDelegate(
-                        msg.sender
-                    );
-            }
+            amounts[j] = IAlluoVault(vault).claimRewardsDelegate(owner);
+            totalClaimableRewards += amounts[j];
         }
+
+        console.log("totalClaimableRewards", totalClaimableRewards);
         // get all rewards from the pool
         if (totalClaimableRewards == 0) return 0;
 
@@ -101,7 +102,6 @@ contract AlluoRewardsDistributor is
             amounts
         );
 
-        console.log("totalClaimableRewards", totalClaimableRewards);
         if (exitToken != rewardToken) {
             IERC20MetadataUpgradeable(rewardToken).safeIncreaseAllowance(
                 address(EXCHANGE),
@@ -115,20 +115,42 @@ contract AlluoRewardsDistributor is
             );
         }
 
-        IERC20MetadataUpgradeable(exitToken).safeTransfer(
-            msg.sender,
-            totalRewards
-        );
+        IERC20MetadataUpgradeable(exitToken).safeTransfer(owner, totalRewards);
     }
 
-    function editVault(bool add, address _vault)
+    function claimFromAllPools(address exitToken) external returns (uint256) {
+        for (uint256 j; j < pools.length(); j++) {
+            address pool = pools.at(j);
+            _claimAllFromPool(exitToken, pool, msg.sender);
+        }
+    }
+
+    function editVaults(
+        bool add,
+        address _pool,
+        address[] memory _vaults
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (add) {
+            for (uint256 i; i < _vaults.length; i++) {
+                poolToVaults[_pool].add(_vaults[i]);
+            }
+        } else {
+            for (uint256 i; i < _vaults.length; i++) {
+                poolToVaults[_pool].remove(_vaults[i]);
+            }
+        }
+    }
+
+    function editPool(bool add, address _pool)
         external
         onlyRole(DEFAULT_ADMIN_ROLE)
     {
+        // this removes the pool only from the set, but keeps in the mapping which is a bit
+        // inefficient but not crucial
         if (add) {
-            vaults.add(_vault);
+            pools.add(_pool);
         } else {
-            vaults.remove(_vault);
+            pools.remove(_pool);
         }
     }
 
