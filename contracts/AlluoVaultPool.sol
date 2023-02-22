@@ -192,11 +192,9 @@ contract AlluoVaultPool is
                 : (assets * totalBalances) / fundsLocked();
     }
 
-    function _convertToAssets(uint256 shares)
-        internal
-        view
-        returns (uint256 assets)
-    {
+    function _convertToAssets(
+        uint256 shares
+    ) internal view returns (uint256 assets) {
         return
             (totalBalances == 0)
                 ? shares
@@ -228,16 +226,19 @@ contract AlluoVaultPool is
         rewardToken.safeTransfer(msg.sender, amount);
     }
 
-    function withdrawDelegate(address[] memory vaults, uint256[] memory amounts)
+    function withdrawDelegate(
+        address[] memory _vaults,
+        uint256[] memory _amounts
+    )
         external
         onlyRole(REWARDS_DISTRIBUTOR)
         returns (uint256 totalRewardsToWithdraw)
     {
-        for (uint256 i; i < vaults.length; i++) {
-            uint256 shares = _convertToShares(amounts[i]);
-            balances[vaults[i]] -= shares;
+        for (uint256 i; i < _vaults.length; i++) {
+            uint256 shares = _convertToShares(_amounts[i]);
+            balances[_vaults[i]] -= shares;
             totalBalances -= shares;
-            totalRewardsToWithdraw += amounts[i];
+            totalRewardsToWithdraw += _amounts[i];
         }
         (, , , address pool, , ) = CVX_BOOSTER.poolInfo(poolId);
         ICvxBaseRewardPool(pool).withdrawAndUnwrap(
@@ -287,10 +288,10 @@ contract AlluoVaultPool is
         ICvxBaseRewardPool(rewardPool).getReward();
     }
 
-    function editVault(bool add, address _vault)
-        external
-        onlyRole(DEFAULT_ADMIN_ROLE)
-    {
+    function editVault(
+        bool add,
+        address _vault
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (add) {
             vaults.add(_vault);
             _grantRole(VAULT, _vault);
@@ -300,10 +301,10 @@ contract AlluoVaultPool is
         }
     }
 
-    function editYieldTokens(bool add, address _yieldToken)
-        external
-        onlyRole(DEFAULT_ADMIN_ROLE)
-    {
+    function editYieldTokens(
+        bool add,
+        address _yieldToken
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (add) {
             yieldTokens.add(_yieldToken);
         } else {
@@ -311,17 +312,15 @@ contract AlluoVaultPool is
         }
     }
 
-    function changeEntryToken(address _entryToken)
-        external
-        onlyRole(DEFAULT_ADMIN_ROLE)
-    {
+    function changeEntryToken(
+        address _entryToken
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         entryToken = IERC20MetadataUpgradeable(_entryToken);
     }
 
-    function changeUpgradeStatus(bool _status)
-        external
-        onlyRole(DEFAULT_ADMIN_ROLE)
-    {
+    function changeUpgradeStatus(
+        bool _status
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         upgradeStatus = _status;
     }
 
@@ -333,22 +332,19 @@ contract AlluoVaultPool is
         _unpause();
     }
 
-    function grantRole(bytes32 role, address account)
-        public
-        override
-        onlyRole(getRoleAdmin(role))
-    {
+    function grantRole(
+        bytes32 role,
+        address account
+    ) public override onlyRole(getRoleAdmin(role)) {
         if (role == DEFAULT_ADMIN_ROLE) {
             require(account.isContract(), "Not contract");
         }
         _grantRole(role, account);
     }
 
-    function _authorizeUpgrade(address)
-        internal
-        override
-        onlyRole(UPGRADER_ROLE)
-    {
+    function _authorizeUpgrade(
+        address
+    ) internal override onlyRole(UPGRADER_ROLE) {
         require(upgradeStatus, "Upgrade not allowed");
         upgradeStatus = false;
     }
