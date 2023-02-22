@@ -1,8 +1,6 @@
 //SPDX-License-Identifier: MIT
 pragma solidity ^0.8.11;
 
-import "./interfaces/IAlluoPool.sol";
-
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -12,11 +10,12 @@ import "@openzeppelin/contracts-upgradeable/utils/structs/EnumerableSetUpgradeab
 import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/IERC20MetadataUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 
-import "./interfaces/IExchange.sol";
-import "./interfaces/ICvxBooster.sol";
-import "./interfaces/ICvxBaseRewardPool.sol";
-import "./interfaces/ICurvePool.sol";
-import "./interfaces/IAlluoVault.sol";
+import {IExchange} from "./interfaces/IExchange.sol";
+import {ICvxBooster} from "./interfaces/ICvxBooster.sol";
+import {ICvxBaseRewardPool} from "./interfaces/ICvxBaseRewardPool.sol";
+import {ICurvePool} from "./interfaces/ICurvePool.sol";
+import {IAlluoVault} from "./interfaces/IAlluoVault.sol";
+import {IAlluoPool} from "./interfaces/IAlluoPool.sol";
 
 import "hardhat/console.sol";
 
@@ -29,13 +28,11 @@ contract AlluoRewardsDistributor is
         IExchange(0x29c66CF57a03d41Cfe6d9ecB6883aa0E2AbA21Ec);
 
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
-
+    bool public upgradeStatus;
     address public rewardToken;
     EnumerableSetUpgradeable.AddressSet private pools;
     mapping(address => EnumerableSetUpgradeable.AddressSet)
         private poolToVaults;
-
-    bool public upgradeStatus;
 
     using AddressUpgradeable for address;
     using SafeERC20Upgradeable for IERC20MetadataUpgradeable;
@@ -65,11 +62,11 @@ contract AlluoRewardsDistributor is
         _grantRole(UPGRADER_ROLE, msg.sender);
     }
 
-    function claimAllFromPool(address exitToken, address alluoPool)
-        external
-        returns (uint256 totalRewards)
-    {
-        _claimAllFromPool(exitToken, alluoPool, msg.sender);
+    function claimAllFromPool(
+        address exitToken,
+        address alluoPool
+    ) external returns (uint256) {
+        return _claimAllFromPool(exitToken, alluoPool, msg.sender);
     }
 
     function _claimAllFromPool(
@@ -97,7 +94,7 @@ contract AlluoRewardsDistributor is
         // get all rewards from the pool
         if (totalClaimableRewards == 0) return 0;
 
-        uint256 totalRewards = IAlluoPool(alluoPool).withdrawDelegate(
+        totalRewards = IAlluoPool(alluoPool).withdrawDelegate(
             userVaults,
             amounts
         );
@@ -118,7 +115,7 @@ contract AlluoRewardsDistributor is
         IERC20MetadataUpgradeable(exitToken).safeTransfer(owner, totalRewards);
     }
 
-    function claimFromAllPools(address exitToken) external returns (uint256) {
+    function claimFromAllPools(address exitToken) external {
         for (uint256 j; j < pools.length(); j++) {
             address pool = pools.at(j);
             _claimAllFromPool(exitToken, pool, msg.sender);
@@ -141,10 +138,10 @@ contract AlluoRewardsDistributor is
         }
     }
 
-    function editPool(bool add, address _pool)
-        external
-        onlyRole(DEFAULT_ADMIN_ROLE)
-    {
+    function editPool(
+        bool add,
+        address _pool
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         // this removes the pool only from the set, but keeps in the mapping which is a bit
         // inefficient but not crucial
         if (add) {
@@ -154,29 +151,25 @@ contract AlluoRewardsDistributor is
         }
     }
 
-    function grantRole(bytes32 role, address account)
-        public
-        override
-        onlyRole(getRoleAdmin(role))
-    {
+    function grantRole(
+        bytes32 role,
+        address account
+    ) public override onlyRole(getRoleAdmin(role)) {
         if (role == DEFAULT_ADMIN_ROLE) {
             require(account.isContract(), "Not contract");
         }
         _grantRole(role, account);
     }
 
-    function changeUpgradeStatus(bool _status)
-        external
-        onlyRole(DEFAULT_ADMIN_ROLE)
-    {
+    function changeUpgradeStatus(
+        bool _status
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         upgradeStatus = _status;
     }
 
-    function _authorizeUpgrade(address)
-        internal
-        override
-        onlyRole(UPGRADER_ROLE)
-    {
+    function _authorizeUpgrade(
+        address
+    ) internal override onlyRole(UPGRADER_ROLE) {
         require(upgradeStatus, "Upgrade not allowed");
         upgradeStatus = false;
     }
