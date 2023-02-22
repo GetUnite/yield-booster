@@ -27,7 +27,8 @@ interface IAlluoPool {
 
     function grantRole(bytes32 role, address account) external;
 
-    function withdrawDelegate(address[] memory vaults, uint256[] memory amounts)
-        external
-        returns (uint256 totalRewardsToWithdraw);
+    function withdrawDelegate(
+        address[] memory vaults,
+        uint256[] memory amounts
+    ) external returns (uint256 totalRewardsToWithdraw);
 }
