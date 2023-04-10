@@ -24,7 +24,7 @@ contract AlluoUpgradeableBase is
 
     bool public upgradeStatus;
 
-    function __AlluoUpgradeableBase_init() internal initializer {
+    function __AlluoUpgradeableBase_init() public initializer {
         __AccessControl_init();
         __UUPSUpgradeable_init();
     }
