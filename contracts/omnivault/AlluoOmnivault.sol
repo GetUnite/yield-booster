@@ -3,7 +3,7 @@ pragma solidity ^0.8.17;
 import {IAlluoOmnivault} from "./interfaces/IAlluoOmnivault.sol";
 import {IExchange} from "./interfaces/IExchange.sol";
 import {IBeefyBoost} from "./interfaces/IBeefyBoost.sol";
-
+import {IBeefyVault} from "./interfaces/IBeefyVault.sol";
 import {AlluoUpgradeableBase} from "../AlluoUpgradeableBase.sol";
 
 import {SafeERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
@@ -20,9 +20,10 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
     using EnumerableSetUpgradeable for EnumerableSetUpgradeable.UintSet;
 
     mapping(address => mapping(address => uint256)) public balances;
-    mapping(address => uint256) public totalUserDeposits;
     mapping(address => uint256) public underlyingVaultsPercents;
     mapping(address => address) public vaultToBeefyBoost;
+    mapping(address => uint256) public lastPricePerFullShare;
+    mapping(address => uint256) public adminFees;
 
     EnumerableSetUpgradeable.AddressSet private activeUsers;
     EnumerableSetUpgradeable.AddressSet private activeUnderlyingVaults;
@@ -31,6 +32,15 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
     address public primaryToken;
     uint256 public feeOnYield;
     address public admin;
+    uint256 public lastYieldSkimTimestamp;
+    uint256 public skimYieldPeriod;
+
+    modifier enforceYieldSkimming() {
+        if (block.timestamp >= lastYieldSkimTimestamp + skimYieldPeriod) {
+            skimYieldFeeAndSendToAdmin();
+        }
+        _;
+    }
 
     function initialize(
         address _exchangeAddress,
@@ -38,7 +48,8 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         address[] memory _underlyingVaults,
         uint256[] memory _underlyingVaultsPercents,
         address _admin,
-        uint256 _feeOnYield
+        uint256 _feeOnYield,
+        uint256 _skimYieldPeriod
     ) public initializer {
         __AlluoUpgradeableBase_init();
         exchangeAddress = IExchange(_exchangeAddress);
@@ -48,13 +59,21 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
             underlyingVaultsPercents[
                 _underlyingVaults[i]
             ] = _underlyingVaultsPercents[i];
+            lastPricePerFullShare[_underlyingVaults[i]] = IBeefyVault(
+                _underlyingVaults[i]
+            ).getPricePerFullShare();
         }
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         admin = _admin;
         feeOnYield = _feeOnYield;
+        skimYieldPeriod = _skimYieldPeriod;
+        lastYieldSkimTimestamp = block.timestamp;
     }
 
-    function deposit(address tokenAddress, uint256 amount) external override {
+    function deposit(
+        address tokenAddress,
+        uint256 amount
+    ) external override enforceYieldSkimming {
         // First transfer the toknes to the contract. Then use the exchange to exchange it to the activeUnderlyingVaults
         // Then initialize the user's vaultBalance based on balance before and balance after.
         require(amount > 0, "!GT0");
@@ -76,11 +95,8 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
                 amount,
                 0
             );
-            // Increase priamryToken deposit factor so that we can correctly calculate fees on withdrawal
         }
         _iterativeDeposit(amount, true);
-        // This is used to calculate fees on withdrawal
-        totalUserDeposits[msg.sender] += amount;
         if (activeUsers.contains(msg.sender) == false) {
             activeUsers.add(msg.sender);
         }
@@ -144,7 +160,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
     function withdraw(
         address tokenAddress,
         uint256 percentage
-    ) external override returns (uint256 totalTokens) {
+    ) external override enforceYieldSkimming returns (uint256 totalTokens) {
         require(percentage > 0, "!GT0");
         require(percentage <= 100, "!LTE100");
         for (uint256 i = 0; i < activeUnderlyingVaults.length(); i++) {
@@ -165,22 +181,10 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
             );
             balances[msg.sender][vaultAddress] -= vaultAmount;
         }
-        // If the percentage is 100, then remove the user from the activeUsers
-        uint256 totalDepositsScaled = (totalUserDeposits[msg.sender] *
-            percentage) / 100;
-        if (totalTokens > totalDepositsScaled) {
-            uint256 delta = totalTokens - totalDepositsScaled;
-            delta = (delta * feeOnYield) / 10000;
-            if (delta > 0) {
-                IERC20MetadataUpgradeable(primaryToken).safeTransfer(
-                    admin,
-                    delta
-                );
-                totalTokens -= delta;
-            }
+
+        if (percentage == 100) {
+            activeUsers.remove(msg.sender);
         }
-        activeUsers.remove(msg.sender);
-        totalUserDeposits[msg.sender] -= totalDepositsScaled;
 
         if (tokenAddress != primaryToken) {
             IERC20MetadataUpgradeable(primaryToken).safeApprove(
@@ -200,6 +204,95 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         );
     }
 
+    function skimYieldFeeAndSendToAdmin() public {
+        if (feeOnYield == 0) {
+            return;
+        }
+        for (uint256 i = 0; i < activeUnderlyingVaults.length(); i++) {
+            address vaultAddress = activeUnderlyingVaults.at(i);
+            uint256 currentPricePerFullShare = IBeefyVault(vaultAddress)
+                .getPricePerFullShare();
+            uint256 previousPricePerFullShare = lastPricePerFullShare[
+                vaultAddress
+            ];
+
+            if (currentPricePerFullShare > previousPricePerFullShare) {
+                // Additional yield from reward tokens, only in the LP.
+                uint256 additionalYield = ((currentPricePerFullShare -
+                    previousPricePerFullShare) *
+                    IERC20MetadataUpgradeable(vaultAddress).balanceOf(
+                        address(this)
+                    )) / 1e18;
+
+                uint256 feeInUnderlyingToken = (additionalYield * feeOnYield) /
+                    10000;
+                uint256 lpTokensToWithdraw = (feeInUnderlyingToken * 1e18) /
+                    currentPricePerFullShare;
+
+                IERC20MetadataUpgradeable(vaultAddress).safeApprove(
+                    address(exchangeAddress),
+                    lpTokensToWithdraw
+                );
+                uint256 feeInPrimaryToken = exchangeAddress.exchange(
+                    vaultAddress,
+                    primaryToken,
+                    lpTokensToWithdraw,
+                    0
+                );
+                // Update admin fees mapping
+                adminFees[primaryToken] += feeInPrimaryToken;
+                // Update user balances
+                for (uint256 j = 0; j < activeUsers.length(); j++) {
+                    address userAddress = activeUsers.at(j);
+                    uint256 userBalance = balances[userAddress][vaultAddress];
+                    uint256 userShareBeforeSwap = (userBalance * 1e18) /
+                        (IERC20MetadataUpgradeable(vaultAddress).balanceOf(
+                            address(this)
+                        ) + lpTokensToWithdraw);
+                    uint256 userLpFee = (lpTokensToWithdraw *
+                        userShareBeforeSwap) / 1e18;
+                    balances[userAddress][vaultAddress] =
+                        userBalance -
+                        userLpFee;
+                }
+            }
+        }
+
+        _updateLastPricePerFullShare();
+    }
+
+    function _updateLastPricePerFullShare() internal {
+        for (uint256 i = 0; i < activeUnderlyingVaults.length(); i++) {
+            address vaultAddress = activeUnderlyingVaults.at(i);
+            uint256 currentPricePerFullShare = IBeefyVault(vaultAddress)
+                .getPricePerFullShare();
+            lastPricePerFullShare[vaultAddress] = currentPricePerFullShare;
+        }
+    }
+
+    function _processBeefyReward(
+        address beefyBoostAddress
+    ) internal returns (uint256 rewardAmount) {
+        if (beefyBoostAddress != address(0)) {
+            address rewardToken = IBeefyBoost(beefyBoostAddress).rewardToken();
+            uint256 rewardBalance = IERC20MetadataUpgradeable(rewardToken)
+                .balanceOf(address(this));
+            IERC20MetadataUpgradeable(rewardToken).safeApprove(
+                address(exchangeAddress),
+                rewardBalance
+            );
+            rewardAmount = exchangeAddress.exchange(
+                rewardToken,
+                primaryToken,
+                rewardBalance,
+                0
+            );
+            uint256 fee = (rewardAmount * feeOnYield) / 10000;
+            rewardAmount -= fee;
+            adminFees[primaryToken] += fee;
+        }
+    }
+
     function _swapBoostedRewards() internal returns (uint256) {
         uint256 totalRewards;
         for (uint256 i; i < activeUnderlyingVaults.length(); i++) {
@@ -207,25 +300,8 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
             address beefyBoostAddress = vaultToBeefyBoost[vaultAddress];
             if (beefyBoostAddress != address(0)) {
                 IBeefyBoost(beefyBoostAddress).getReward();
-                // Get the reward token
-                address rewardToken = IBeefyBoost(beefyBoostAddress)
-                    .rewardToken();
-                // Swap it all to the primaryToken and return it
-                IERC20MetadataUpgradeable(rewardToken).safeApprove(
-                    address(exchangeAddress),
-                    IERC20MetadataUpgradeable(rewardToken).balanceOf(
-                        address(this)
-                    )
-                );
-                totalRewards += exchangeAddress.exchange(
-                    rewardToken,
-                    primaryToken,
-                    IERC20MetadataUpgradeable(rewardToken).balanceOf(
-                        address(this)
-                    ),
-                    0
-                );
             }
+            totalRewards += _processBeefyReward(beefyBoostAddress);
         }
         return totalRewards;
     }
@@ -246,25 +322,8 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         address beefyBoostAddress = vaultToBeefyBoost[vaultAddress];
         if (beefyBoostAddress != address(0)) {
             IBeefyBoost(beefyBoostAddress).exit();
-
-            // Get the reward token
-            address rewardToken = IBeefyBoost(beefyBoostAddress).rewardToken();
-            // Swap it all to the primaryToken and return it
-            IERC20MetadataUpgradeable(rewardToken).safeApprove(
-                address(exchangeAddress),
-                IERC20MetadataUpgradeable(rewardToken).balanceOf(address(this))
-            );
-            return
-                exchangeAddress.exchange(
-                    rewardToken,
-                    primaryToken,
-                    IERC20MetadataUpgradeable(rewardToken).balanceOf(
-                        address(this)
-                    ),
-                    0
-                );
         }
-        return 0;
+        return _processBeefyReward(beefyBoostAddress);
     }
 
     function _harvestAndCreditUsers() internal {
@@ -276,7 +335,6 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
             );
             for (uint256 i = 0; i < activeUsers.length(); i++) {
                 address user = activeUsers.at(i);
-                console.log("user", user);
                 for (uint256 j = 0; j < activeUnderlyingVaults.length(); j++) {
                     address vaultAddress = activeUnderlyingVaults.at(j);
                     uint256 userVaultBalance = balances[user][vaultAddress];
@@ -288,11 +346,8 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
                     uint256 newUserVaultTokens = (vaultBalance *
                         vaultPercentage) / 1e18;
                     balances[user][vaultAddress] = newUserVaultTokens;
-                    console.log("User's new vault balance", newUserVaultTokens);
                 }
             }
-        } else {
-            console.log("Do nothing");
         }
     }
 
@@ -305,6 +360,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
             newVaults.length == newPercents.length,
             "Mismatch in vaults and percents lengths"
         );
+        skimYieldFeeAndSendToAdmin();
         if (newVaults.length == 0) {
             _harvestAndCreditUsers();
             return;
@@ -334,11 +390,9 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
                 vaultBalance,
                 0
             );
-            console.log("Exchanged Lps", primaryTokens);
             totalPrimaryTokens += primaryTokens;
             primaryTokensList[i] = primaryTokens;
         }
-        console.log("total value of LPs in primary", totalPrimaryTokens);
         // Step 2: Swap all of these primary tokens to the correct proportion of new moo tokens.
         uint256 remainingPrimaryTokens = totalPrimaryTokens;
         IERC20MetadataUpgradeable(primaryToken).safeApprove(
@@ -363,7 +417,6 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         // Step 3: Loop through every user and calculate how much new vault tokens they are entitled to.
         for (uint256 i = 0; i < activeUsers.length(); i++) {
             address user = activeUsers.at(i);
-            console.log("user", user);
             uint256 userTotalPrimaryTokens;
             for (uint256 j = 0; j < activeUnderlyingVaults.length(); j++) {
                 address vaultAddress = activeUnderlyingVaults.at(j);
@@ -386,7 +439,6 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
                 uint256 newUserVaultTokens = (newVaultBalance *
                     userPercentage) / 1e18;
                 balances[user][newVaultAddress] = newUserVaultTokens;
-                console.log("User's new vault balance", newUserVaultTokens);
             }
         }
 
@@ -403,8 +455,20 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
             if (boostVaults[i] != address(0)) {
                 vaultToBeefyBoost[newVaultAddress] = boostVaults[i];
             }
+            lastPricePerFullShare[newVaults[i]] = IBeefyVault(newVaults[i])
+                .getPricePerFullShare();
             _boostIfApplicable(newVaultAddress);
         }
+    }
+
+    function claimAdminFees() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        uint256 feeAmount = adminFees[primaryToken];
+        require(feeAmount > 0, "NO_FEES");
+        adminFees[primaryToken] = 0;
+        IERC20MetadataUpgradeable(primaryToken).safeTransfer(
+            msg.sender,
+            feeAmount
+        );
     }
 
     // Return the balance of a user in a vault by looping through the active vaults
@@ -424,6 +488,43 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         }
     }
 
+    function getActiveUnderlyingVaults()
+        external
+        view
+        returns (address[] memory)
+    {
+        address[] memory vaults = new address[](
+            activeUnderlyingVaults.length()
+        );
+        for (uint256 i = 0; i < activeUnderlyingVaults.length(); i++) {
+            vaults[i] = activeUnderlyingVaults.at(i);
+        }
+        return vaults;
+    }
+
+    function getUnderlyingVaultsPercents()
+        external
+        view
+        returns (uint256[] memory)
+    {
+        uint256[] memory percents = new uint256[](
+            activeUnderlyingVaults.length()
+        );
+        for (uint256 i = 0; i < activeUnderlyingVaults.length(); i++) {
+            address vaultAddress = activeUnderlyingVaults.at(i);
+            percents[i] = underlyingVaultsPercents[vaultAddress];
+        }
+        return percents;
+    }
+
+    function getActiveUsers() external view returns (address[] memory) {
+        address[] memory users = new address[](activeUsers.length());
+        for (uint256 i = 0; i < activeUsers.length(); i++) {
+            users[i] = activeUsers.at(i);
+        }
+        return users;
+    }
+
     // Admin functions
     function setExchangeAddress(
         address _exchangeAddress
@@ -441,5 +542,11 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         uint256 _feeOnYield
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         feeOnYield = _feeOnYield;
+    }
+
+    function setSkimYieldPeriod(
+        uint256 _skimYieldPeriod
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        skimYieldPeriod = _skimYieldPeriod;
     }
 }

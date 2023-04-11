@@ -20,4 +20,6 @@ interface IBeefyVault is IERC20 {
     function balance() external view returns (uint256);
 
     function want() external view returns (IERC20);
+
+    function decimals() external view returns (uint256);
 }
