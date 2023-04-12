@@ -4,6 +4,9 @@ import {IAlluoOmnivault} from "./interfaces/IAlluoOmnivault.sol";
 import {IExchange} from "./interfaces/IExchange.sol";
 import {IBeefyBoost} from "./interfaces/IBeefyBoost.sol";
 import {IBeefyVault} from "./interfaces/IBeefyVault.sol";
+import {IYearnBoost} from "./interfaces/IYearnBoost.sol";
+import {IYearnVault} from "./interfaces/IYearnVault.sol";
+
 import {AlluoUpgradeableBase} from "../AlluoUpgradeableBase.sol";
 
 import {SafeERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
@@ -21,7 +24,8 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
 
     mapping(address => mapping(address => uint256)) public balances;
     mapping(address => uint256) public underlyingVaultsPercents;
-    mapping(address => address) public vaultToBeefyBoost;
+    mapping(address => address) public vaultToBoost;
+    mapping(address => uint256) public rewardTokenToMinSwapAmount;
     mapping(address => uint256) public lastPricePerFullShare;
     mapping(address => uint256) public adminFees;
 
@@ -59,15 +63,26 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
             underlyingVaultsPercents[
                 _underlyingVaults[i]
             ] = _underlyingVaultsPercents[i];
-            lastPricePerFullShare[_underlyingVaults[i]] = IBeefyVault(
+
+            lastPricePerFullShare[_underlyingVaults[i]] = getPricePerShare(
                 _underlyingVaults[i]
-            ).getPricePerFullShare();
+            );
         }
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         admin = _admin;
         feeOnYield = _feeOnYield;
         skimYieldPeriod = _skimYieldPeriod;
         lastYieldSkimTimestamp = block.timestamp;
+    }
+
+    function getPricePerShare(
+        address vaultAddress
+    ) public view returns (uint256) {
+        if (isBeefyVault(vaultAddress)) {
+            return IBeefyVault(vaultAddress).getPricePerFullShare();
+        } else {
+            return IYearnVault(vaultAddress).pricePerShare();
+        }
     }
 
     function deposit(
@@ -85,7 +100,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
 
         // Swap all into primary token first.
         if (tokenAddress != primaryToken) {
-            IERC20MetadataUpgradeable(tokenAddress).approve(
+            IERC20MetadataUpgradeable(tokenAddress).safeIncreaseAllowance(
                 address(exchangeAddress),
                 amount
             );
@@ -111,7 +126,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         uint256[] memory vaultInitialBalances = new uint256[](
             activeUnderlyingVaults.length()
         );
-        IERC20MetadataUpgradeable(primaryToken).safeApprove(
+        IERC20MetadataUpgradeable(primaryToken).safeIncreaseAllowance(
             address(exchangeAddress),
             remainingPrimaryTokens
         );
@@ -119,8 +134,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
             address vaultAddress = activeUnderlyingVaults.at(i);
             uint256 vaultPercent = underlyingVaultsPercents[vaultAddress];
             uint256 primaryTokensToSwap = (amount * vaultPercent) / 100;
-            vaultInitialBalances[i] = IERC20MetadataUpgradeable(vaultAddress)
-                .balanceOf(address(this));
+            vaultInitialBalances[i] = getVaultBalanceOf(vaultAddress);
             if (i == activeUnderlyingVaults.length() - 1) {
                 primaryTokensToSwap = remainingPrimaryTokens;
             } else {
@@ -142,18 +156,24 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
     }
 
     function _boostIfApplicable(address vaultAddress) internal virtual {
-        address beefyBoostAddress = vaultToBeefyBoost[vaultAddress];
+        address boostAddress = vaultToBoost[vaultAddress];
         IERC20MetadataUpgradeable vaultToken = IERC20MetadataUpgradeable(
             vaultAddress
         );
-        if (beefyBoostAddress != address(0)) {
-            vaultToken.approve(
-                beefyBoostAddress,
+        if (boostAddress != address(0)) {
+            vaultToken.safeIncreaseAllowance(
+                boostAddress,
                 vaultToken.balanceOf(address(this))
             );
-            IBeefyBoost(beefyBoostAddress).stake(
-                vaultToken.balanceOf(address(this))
-            );
+            if (isBeefyVault(vaultAddress)) {
+                IBeefyBoost(boostAddress).stake(
+                    vaultToken.balanceOf(address(this))
+                );
+            } else {
+                IYearnBoost(boostAddress).stake(
+                    vaultToken.balanceOf(address(this))
+                );
+            }
         }
     }
 
@@ -169,7 +189,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
                 percentage) / 100;
             // If the vault token is inside the beefy boost, exit that first
             _unboostIfApplicable(vaultAddress, vaultAmount);
-            IERC20MetadataUpgradeable(vaultAddress).safeApprove(
+            IERC20MetadataUpgradeable(vaultAddress).safeIncreaseAllowance(
                 address(exchangeAddress),
                 vaultAmount
             );
@@ -187,7 +207,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         }
 
         if (tokenAddress != primaryToken) {
-            IERC20MetadataUpgradeable(primaryToken).safeApprove(
+            IERC20MetadataUpgradeable(primaryToken).safeIncreaseAllowance(
                 address(exchangeAddress),
                 totalTokens
             );
@@ -210,8 +230,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         }
         for (uint256 i = 0; i < activeUnderlyingVaults.length(); i++) {
             address vaultAddress = activeUnderlyingVaults.at(i);
-            uint256 currentPricePerFullShare = IBeefyVault(vaultAddress)
-                .getPricePerFullShare();
+            uint256 currentPricePerFullShare = getPricePerShare(vaultAddress);
             uint256 previousPricePerFullShare = lastPricePerFullShare[
                 vaultAddress
             ];
@@ -220,19 +239,28 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
                 // Additional yield from reward tokens, only in the LP.
                 uint256 additionalYield = ((currentPricePerFullShare -
                     previousPricePerFullShare) *
-                    IERC20MetadataUpgradeable(vaultAddress).balanceOf(
-                        address(this)
-                    )) / 1e18;
+                    getVaultBalanceOf(vaultAddress)) / 1e18;
 
                 uint256 feeInUnderlyingToken = (additionalYield * feeOnYield) /
                     10000;
                 uint256 lpTokensToWithdraw = (feeInUnderlyingToken * 1e18) /
                     currentPricePerFullShare;
 
-                IERC20MetadataUpgradeable(vaultAddress).safeApprove(
+                IERC20MetadataUpgradeable(vaultAddress).safeIncreaseAllowance(
                     address(exchangeAddress),
                     lpTokensToWithdraw
                 );
+
+                if (vaultToBoost[vaultAddress] != address(0)) {
+                    if (isBeefyVault(vaultAddress))
+                        IBeefyBoost(vaultToBoost[vaultAddress]).withdraw(
+                            lpTokensToWithdraw
+                        );
+                    else
+                        IYearnBoost(vaultToBoost[vaultAddress]).withdraw(
+                            lpTokensToWithdraw
+                        );
+                }
                 uint256 feeInPrimaryToken = exchangeAddress.exchange(
                     vaultAddress,
                     primaryToken,
@@ -246,9 +274,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
                     address userAddress = activeUsers.at(j);
                     uint256 userBalance = balances[userAddress][vaultAddress];
                     uint256 userShareBeforeSwap = (userBalance * 1e18) /
-                        (IERC20MetadataUpgradeable(vaultAddress).balanceOf(
-                            address(this)
-                        ) + lpTokensToWithdraw);
+                        (getVaultBalanceOf(vaultAddress) + lpTokensToWithdraw);
                     uint256 userLpFee = (lpTokensToWithdraw *
                         userShareBeforeSwap) / 1e18;
                     balances[userAddress][vaultAddress] =
@@ -264,23 +290,26 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
     function _updateLastPricePerFullShare() internal {
         for (uint256 i = 0; i < activeUnderlyingVaults.length(); i++) {
             address vaultAddress = activeUnderlyingVaults.at(i);
-            uint256 currentPricePerFullShare = IBeefyVault(vaultAddress)
-                .getPricePerFullShare();
+            uint256 currentPricePerFullShare = getPricePerShare(vaultAddress);
             lastPricePerFullShare[vaultAddress] = currentPricePerFullShare;
         }
     }
 
-    function _processBeefyReward(
-        address beefyBoostAddress
+    function _processBoostReward(
+        address boostAddress,
+        address rewardToken
     ) internal returns (uint256 rewardAmount) {
-        if (beefyBoostAddress != address(0)) {
-            address rewardToken = IBeefyBoost(beefyBoostAddress).rewardToken();
+        if (boostAddress != address(0)) {
             uint256 rewardBalance = IERC20MetadataUpgradeable(rewardToken)
                 .balanceOf(address(this));
-            IERC20MetadataUpgradeable(rewardToken).safeApprove(
+            if (rewardBalance < rewardTokenToMinSwapAmount[rewardToken]) {
+                return 0;
+            }
+            IERC20MetadataUpgradeable(rewardToken).safeIncreaseAllowance(
                 address(exchangeAddress),
                 rewardBalance
             );
+
             rewardAmount = exchangeAddress.exchange(
                 rewardToken,
                 primaryToken,
@@ -297,11 +326,18 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         uint256 totalRewards;
         for (uint256 i; i < activeUnderlyingVaults.length(); i++) {
             address vaultAddress = activeUnderlyingVaults.at(i);
-            address beefyBoostAddress = vaultToBeefyBoost[vaultAddress];
-            if (beefyBoostAddress != address(0)) {
-                IBeefyBoost(beefyBoostAddress).getReward();
+            address boostAddress = vaultToBoost[vaultAddress];
+            address rewardToken;
+            if (boostAddress != address(0)) {
+                if (isBeefyVault(vaultAddress)) {
+                    IBeefyBoost(boostAddress).getReward();
+                    rewardToken = IBeefyBoost(boostAddress).rewardToken();
+                } else {
+                    IYearnBoost(boostAddress).getReward();
+                    rewardToken = IYearnBoost(boostAddress).rewardsToken();
+                }
             }
-            totalRewards += _processBeefyReward(beefyBoostAddress);
+            totalRewards += _processBoostReward(boostAddress, rewardToken);
         }
         return totalRewards;
     }
@@ -310,20 +346,31 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         address vaultAddress,
         uint256 amount
     ) internal virtual {
-        address beefyBoostAddress = vaultToBeefyBoost[vaultAddress];
-        if (beefyBoostAddress != address(0)) {
-            IBeefyBoost(beefyBoostAddress).withdraw(amount);
+        address boostAddress = vaultToBoost[vaultAddress];
+        if (boostAddress != address(0)) {
+            if (isBeefyVault(vaultAddress)) {
+                IBeefyBoost(boostAddress).withdraw(amount);
+            } else {
+                IYearnBoost(boostAddress).withdraw(amount);
+            }
         }
     }
 
     function _unboostAllAndSwapRewards(
         address vaultAddress
     ) internal virtual returns (uint256) {
-        address beefyBoostAddress = vaultToBeefyBoost[vaultAddress];
-        if (beefyBoostAddress != address(0)) {
-            IBeefyBoost(beefyBoostAddress).exit();
+        address boostAddress = vaultToBoost[vaultAddress];
+        address rewardToken;
+        if (boostAddress != address(0)) {
+            if (isBeefyVault(vaultAddress)) {
+                IBeefyBoost(boostAddress).exit();
+                rewardToken = IBeefyBoost(boostAddress).rewardToken();
+            } else {
+                IYearnBoost(boostAddress).exit();
+                rewardToken = IYearnBoost(boostAddress).rewardsToken();
+            }
         }
-        return _processBeefyReward(beefyBoostAddress);
+        return _processBoostReward(boostAddress, rewardToken);
     }
 
     function _harvestAndCreditUsers() internal {
@@ -338,6 +385,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
                 for (uint256 j = 0; j < activeUnderlyingVaults.length(); j++) {
                     address vaultAddress = activeUnderlyingVaults.at(j);
                     uint256 userVaultBalance = balances[user][vaultAddress];
+
                     uint256 vaultPercentage = (userVaultBalance * 1e18) /
                         _vaultInitialBalances[j];
                     uint256 vaultBalance = IERC20MetadataUpgradeable(
@@ -376,11 +424,12 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         );
         for (uint256 i = 0; i < activeUnderlyingVaults.length(); i++) {
             address vaultAddress = activeUnderlyingVaults.at(i);
+            uint256 primaryTokens = _unboostAllAndSwapRewards(vaultAddress);
+
             uint256 vaultBalance = IERC20MetadataUpgradeable(vaultAddress)
                 .balanceOf(address(this));
             vaultInitialBalances[i] = vaultBalance;
-            uint256 primaryTokens = _unboostAllAndSwapRewards(vaultAddress);
-            IERC20MetadataUpgradeable(vaultAddress).safeApprove(
+            IERC20MetadataUpgradeable(vaultAddress).safeIncreaseAllowance(
                 address(exchangeAddress),
                 vaultBalance
             );
@@ -395,7 +444,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         }
         // Step 2: Swap all of these primary tokens to the correct proportion of new moo tokens.
         uint256 remainingPrimaryTokens = totalPrimaryTokens;
-        IERC20MetadataUpgradeable(primaryToken).safeApprove(
+        IERC20MetadataUpgradeable(primaryToken).safeIncreaseAllowance(
             address(exchangeAddress),
             remainingPrimaryTokens
         );
@@ -453,10 +502,11 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
             activeUnderlyingVaults.add(newVaultAddress);
             underlyingVaultsPercents[newVaultAddress] = newPercents[i];
             if (boostVaults[i] != address(0)) {
-                vaultToBeefyBoost[newVaultAddress] = boostVaults[i];
+                vaultToBoost[newVaultAddress] = boostVaults[i];
             }
-            lastPricePerFullShare[newVaults[i]] = IBeefyVault(newVaults[i])
-                .getPricePerFullShare();
+            lastPricePerFullShare[newVaults[i]] = getPricePerShare(
+                newVaults[i]
+            );
             _boostIfApplicable(newVaultAddress);
         }
     }
@@ -469,6 +519,33 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
             msg.sender,
             feeAmount
         );
+    }
+
+    function getVaultBalanceOf(
+        address vaultAddress
+    ) public view returns (uint256 total) {
+        total += IERC20MetadataUpgradeable(vaultAddress).balanceOf(
+            address(this)
+        );
+        if (vaultToBoost[vaultAddress] != address(0)) {
+            if (isBeefyVault(vaultAddress)) {
+                total += IBeefyBoost(vaultToBoost[vaultAddress]).balanceOf(
+                    address(this)
+                );
+            } else {
+                total += IYearnBoost(vaultToBoost[vaultAddress]).balanceOf(
+                    address(this)
+                );
+            }
+        }
+    }
+
+    function isBeefyVault(address vaultAddress) public view returns (bool) {
+        try IBeefyVault(vaultAddress).getPricePerFullShare() returns (uint256) {
+            return true;
+        } catch {
+            return false;
+        }
     }
 
     // Return the balance of a user in a vault by looping through the active vaults
@@ -548,5 +625,19 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         uint256 _skimYieldPeriod
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         skimYieldPeriod = _skimYieldPeriod;
+    }
+
+    function setBoostVault(
+        address _vault,
+        address _boostVault
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        vaultToBoost[_vault] = _boostVault;
+    }
+
+    function setRewardTokenToMinSwapAmount(
+        address _rewardToken,
+        uint256 _minAmount
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        rewardTokenToMinSwapAmount[_rewardToken] = _minAmount;
     }
 }

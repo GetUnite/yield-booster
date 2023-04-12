@@ -7,17 +7,17 @@ import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 function generateRandomNumber(min: number, max: number): number {
     return Math.floor(Math.random() * (max - min + 1)) + min;
 }
-describe("Omnivault Tests", function () {
+describe("Boosted beefy Omnivault Tests", function () {
     let omnivault: AlluoOmnivault;
     let signers: SignerWithAddress[];
-    let usdc: IERC20MetadataUpgradeable, weth: IERC20MetadataUpgradeable;
+    let usdc: IERC20MetadataUpgradeable, weth: IERC20MetadataUpgradeable, ldo: IERC20MetadataUpgradeable;
     let mooLp1: IERC20MetadataUpgradeable, mooLp2: IERC20MetadataUpgradeable, mooLp3: IERC20MetadataUpgradeable;
     let exchange: Exchange;
     let admin: SignerWithAddress;
     const tolerance = 1e15; // Adjust the tolerance value as needed
-
+    const lp1BoostAddress = "0x358b7d1a3b7e5c508c40756242f55991a354cd41"
     // Existing setup support:
-    // https://app.beefy.com/vault/curve-op-f-susd
+    // https://app.beefy.com/vault/curve-op-f-wsteth
     // https://app.beefy.com/vault/stargate-op-usdc
     // https://app.beefy.com/vault/hop-op-usdc
     beforeEach(async () => {
@@ -28,7 +28,7 @@ describe("Omnivault Tests", function () {
                     enabled: true,
                     jsonRpcUrl: process.env.OPTIMISM_FORKING_URL as string,
                     //you can fork from last block by commenting next line
-                    blockNumber: 87237321,
+                    blockNumber: 88995824,
                 },
             },],
         });
@@ -38,10 +38,11 @@ describe("Omnivault Tests", function () {
         signers = await ethers.getSigners();
 
         usdc = await ethers.getContractAt("IERC20MetadataUpgradeable", "0x7F5c764cBc14f9669B88837ca1490cCa17c31607")
-        mooLp1 = await ethers.getContractAt('IERC20MetadataUpgradeable', '0x107Dbf9c9C0EF2Df114159e5C7DC2baf7C444cFF');
+        mooLp1 = await ethers.getContractAt('IERC20MetadataUpgradeable', '0x0892a178c363b4739e5Ac89E9155B9c30214C0c0');
         mooLp2 = await ethers.getContractAt("IERC20MetadataUpgradeable", "0xe536F8141D8EB7B1f096934AF3329cB581bFe995");
         mooLp3 = await ethers.getContractAt("IERC20MetadataUpgradeable", "0xE2f035f59De6a952FF699b4EDD0f99c466f25fEc");
         weth = await ethers.getContractAt("IERC20MetadataUpgradeable", "0x4200000000000000000000000000000000000006")
+        ldo = await ethers.getContractAt("IERC20MetadataUpgradeable", "0xfdb794692724153d1488ccdbe0c56c252596735f")
         exchange = await ethers.getContractAt("Exchange", "0x66Ac11c106C3670988DEFDd24BC75dE786b91095")
         admin = signers[19];
         omnivault = (await upgrades.deployProxy(omniVaultFactory, [
@@ -55,6 +56,10 @@ describe("Omnivault Tests", function () {
         ], {
             initializer: "initialize",
         })) as AlluoOmnivault;
+        // These integration tests will charge 10% fee on yield.
+        await omnivault.connect(signers[19]).setFeeOnYield(1000);
+        await omnivault.connect(admin).setBoostVault(mooLp1.address, lp1BoostAddress);
+        await omnivault.connect(admin).setRewardTokenToMinSwapAmount(ldo.address, ethers.utils.parseEther("1"));
 
         let usdWhale = await ethers.getImpersonatedSigner("0xebe80f029b1c02862b9e8a70a7e5317c06f62cae")
         // Send 1 eth to the whale
@@ -64,10 +69,14 @@ describe("Omnivault Tests", function () {
         }
     });
     describe("Core functions of the vaults", function () {
+        this.beforeEach(async function () {
+            // Prevent fee skimming here so that we can better illustrate other mechanics
+            await omnivault.connect(admin).setFeeOnYield(0)
+        })
         it("Deposit when there is only 1 moo LP vault. All funds should go to that Moo vault.", async function () {
             await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("100", 6));
             await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("100", 6));
-            expect(await mooLp1.balanceOf(omnivault.address)).greaterThan(0);
+            expect(await omnivault.getVaultBalanceOf(mooLp1.address)).to.greaterThan(0);
             expect(await usdc.balanceOf(omnivault.address)).equal(0);
         });
         it("Withdraw when there is only 1 moo LP vault. All funds should go back to the user in USDC.", async function () {
@@ -77,22 +86,11 @@ describe("Omnivault Tests", function () {
 
             await omnivault.connect(signers[0]).withdraw(usdc.address, 100);
             // Should equal zero because signer is the only depositor
-            expect(await mooLp1.balanceOf(omnivault.address)).to.equal(0);
+            expect(await omnivault.getVaultBalanceOf(mooLp1.address)).to.equal(0);
             expect(signerUSDCBalanceBeforeWithdrawal).lessThan(await usdc.balanceOf(signers[0].address));
             expect(await usdc.balanceOf(omnivault.address)).equal(0);
 
         })
-        it("Trying to withdraw more than 100% should revert", async function () {
-            await expect(omnivault.connect(signers[0]).withdraw(usdc.address, 101)).to.be.revertedWith("!LTE100")
-        })
-        it("Trying to withdraw 0% should revert", async function () {
-            await expect(omnivault.connect(signers[0]).withdraw(usdc.address, 0)).to.be.revertedWith("!GT0")
-        })
-        it("Depositing zero amounts should revert", async function () {
-            await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("100", 6));
-            await expect(omnivault.connect(signers[0]).deposit(usdc.address, 0)).to.be.revertedWith("!GT0")
-        })
-
 
         it("Multiple depositors should be able to deposit and then withdraw fully. All funds should go back to the user in USDC.", async function () {
             for (let i = 0; i < 5; i++) {
@@ -102,40 +100,21 @@ describe("Omnivault Tests", function () {
             for (let i = 0; i < 5; i++) {
                 await omnivault.connect(signers[i]).withdraw(usdc.address, 100);
             }
-            expect(await mooLp1.balanceOf(omnivault.address)).to.equal(0);
+            expect(await omnivault.getVaultBalanceOf(mooLp1.address)).to.equal(0);
             expect(await usdc.balanceOf(omnivault.address)).equal(0);
 
         })
-        it("Depositing in non primary token should work", async function () {
-            // First swap some usdc to WETH
-            await usdc.connect(signers[0]).approve(exchange.address, ethers.utils.parseUnits("1000", 6));
-            await exchange.connect(signers[0]).exchange(usdc.address, weth.address, ethers.utils.parseUnits("1000", 6), 0);
-            let wethBalance = await weth.balanceOf(signers[0].address);
-            await weth.connect(signers[0]).approve(omnivault.address, wethBalance);
-            await omnivault.connect(signers[0]).deposit(weth.address, wethBalance);
-            expect(await mooLp1.balanceOf(omnivault.address)).greaterThan(0);
-            expect(await weth.balanceOf(omnivault.address)).equal(0);
-        })
 
-        it("Withdrawing in non primary token should work", async function () {
-            // First swap some usdc to WETH
-            await usdc.connect(signers[0]).approve(exchange.address, ethers.utils.parseUnits("1000", 6));
-            await exchange.connect(signers[0]).exchange(usdc.address, weth.address, ethers.utils.parseUnits("1000", 6), 0);
-            let wethBalance = await weth.balanceOf(signers[0].address);
-            await weth.connect(signers[0]).approve(omnivault.address, wethBalance);
-            await omnivault.connect(signers[0]).deposit(weth.address, wethBalance);
-            await omnivault.connect(signers[0]).withdraw(weth.address, 100);
-            expect(await mooLp1.balanceOf(omnivault.address)).to.equal(0);
-            expect(await weth.balanceOf(omnivault.address)).equal(0);
-        })
 
         it("Test depositing into an omnivault with multiple moo vaults", async function () {
             await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("100", 6));
             await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("100", 6));
-            await omnivault.connect(admin).redistribute([mooLp1.address, mooLp2.address, mooLp3.address], [33, 33, 33], [ethers.constants.AddressZero, ethers.constants.AddressZero, ethers.constants.AddressZero]);
+            await omnivault.connect(admin).redistribute([mooLp1.address, mooLp2.address, mooLp3.address], [33, 33, 33], [lp1BoostAddress, ethers.constants.AddressZero, ethers.constants.AddressZero]);
             await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("100", 6));
             await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("100", 6));
-            expect(await mooLp1.balanceOf(omnivault.address)).greaterThan(0);
+            expect(await omnivault.getVaultBalanceOf(mooLp1.address)).to.greaterThan(0);
+            expect(await omnivault.getVaultBalanceOf(mooLp2.address)).to.greaterThan(0);
+            expect(await omnivault.getVaultBalanceOf(mooLp3.address)).to.greaterThan(0);
             expect(await usdc.balanceOf(omnivault.address)).equal(0);
         })
 
@@ -144,26 +123,41 @@ describe("Omnivault Tests", function () {
 
 
     describe("Redistribution tests", function () {
-        it("Remain in same vault. Should do nothing since this vault isn't boosted (separate tests for boosted rewards", async function () {
+        it("Remain in same vault. This should only loop the boost rewards. However, there are insufficient rewards so do nothing", async function () {
+            // Set fee to 0 to prevent fee skimming. This is used to better illustrate the underlying mechanics
+            await omnivault.connect(admin).setFeeOnYield(0);
             await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("100", 6));
             await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("100", 6));
-            let mooLp1TokensBefore = await mooLp1.balanceOf(omnivault.address);
+            let mooLp1TokensBefore = await omnivault.getVaultBalanceOf(mooLp1.address);
             await omnivault.connect(admin).redistribute([], [], []);
-            let mooLp1Tokens = await mooLp1.balanceOf(omnivault.address);
-            expect(mooLp1TokensBefore).to.equal(mooLp1Tokens);
+            let mooLp1Tokens = await omnivault.getVaultBalanceOf(mooLp1.address);
+            expect(mooLp1TokensBefore).to.be.equal(mooLp1Tokens);
+            expect(await omnivault.adminFees(usdc.address)).to.equal(0);
         })
 
-        it("Redistribution with incorrect params should revert", async function () {
-            await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("100", 6));
-            await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("100", 6));
-            await expect(omnivault.connect(admin).redistribute([mooLp2.address], [], [ethers.constants.AddressZero])).to.be.revertedWith("Mismatch in vaults and percents lengths")
+        it("Remain in same vault. This should only loop the boost rewards.", async function () {
+
+
+            await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("20000", 6));
+            await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("20000", 6));
+            let mooLp1TokensBefore = await omnivault.getVaultBalanceOf(mooLp1.address);
+            // Fake and send some LDO tokens to the omnivault
+            await usdc.connect(signers[0]).approve(exchange.address, ethers.utils.parseUnits("10000", 6));
+            await exchange.connect(signers[0]).exchange(usdc.address, ldo.address, ethers.utils.parseUnits("10000", 6), 0);
+            await ldo.connect(signers[0]).transfer(omnivault.address, await ldo.balanceOf(signers[0].address));
+
+            await omnivault.connect(admin).redistribute([], [], []);
+            expect(Number(await omnivault.getVaultBalanceOf(mooLp1.address))).to.be.greaterThan(Number(mooLp1TokensBefore));
+            expect(await omnivault.adminFees(usdc.address)).to.greaterThan(0);
         })
+
+
         it("Redistribution from mooVault1 --> mooVault2", async function () {
             await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("100", 6));
             await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("100", 6));
-            let mooLp2TokensBefore = await mooLp2.balanceOf(omnivault.address);
+            let mooLp2TokensBefore = await omnivault.getVaultBalanceOf(mooLp2.address);
             await omnivault.connect(admin).redistribute([mooLp2.address], [100], [ethers.constants.AddressZero]);
-            let mooLp2Tokens = await mooLp2.balanceOf(omnivault.address);
+            let mooLp2Tokens = await omnivault.getVaultBalanceOf(mooLp2.address);
             expect(mooLp2TokensBefore).to.equal(0);
             expect(Number(mooLp2Tokens)).greaterThan(Number(mooLp2TokensBefore));
 
@@ -171,11 +165,11 @@ describe("Omnivault Tests", function () {
         it("Redistribution from mooVault1 --> mooVault2 and mooVault3 in even proportion", async function () {
             await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("100", 6));
             await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("100", 6));
-            let mooLp2TokensBefore = await mooLp2.balanceOf(omnivault.address);
-            let mooLp3TokensBefore = await mooLp3.balanceOf(omnivault.address);
+            let mooLp2TokensBefore = await omnivault.getVaultBalanceOf(mooLp2.address);
+            let mooLp3TokensBefore = await omnivault.getVaultBalanceOf(mooLp3.address);
             await omnivault.connect(admin).redistribute([mooLp2.address, mooLp3.address], [50, 50], [ethers.constants.AddressZero, ethers.constants.AddressZero]);
-            let mooLp2Tokens = await mooLp2.balanceOf(omnivault.address);
-            let mooLp3Tokens = await mooLp3.balanceOf(omnivault.address);
+            let mooLp2Tokens = await omnivault.getVaultBalanceOf(mooLp2.address);
+            let mooLp3Tokens = await omnivault.getVaultBalanceOf(mooLp3.address);
             expect(mooLp2TokensBefore).to.equal(0);
             expect(mooLp3TokensBefore).to.equal(0);
             expect(Number(mooLp2Tokens)).greaterThan(Number(mooLp2TokensBefore));
@@ -185,20 +179,21 @@ describe("Omnivault Tests", function () {
         it("Redistribution from mooVault1 --> 33% of each mooVault1, mooVault2 and mooVault3", async function () {
             await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("100", 6));
             await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("100", 6));
-            let mooLp1TokensBefore = await mooLp1.balanceOf(omnivault.address);
-            let mooLp2TokensBefore = await mooLp2.balanceOf(omnivault.address);
-            let mooLp3TokensBefore = await mooLp3.balanceOf(omnivault.address);
+            let mooLp1TokensBefore = await omnivault.getVaultBalanceOf(mooLp1.address);
+            let mooLp2TokensBefore = await omnivault.getVaultBalanceOf(mooLp2.address);
+            let mooLp3TokensBefore = await omnivault.getVaultBalanceOf(mooLp3.address);
 
-            await omnivault.connect(admin).redistribute([mooLp1.address, mooLp2.address, mooLp3.address], [33, 33, 33], [ethers.constants.AddressZero, ethers.constants.AddressZero, ethers.constants.AddressZero]);
-            let mooLp1Tokens = await mooLp1.balanceOf(omnivault.address);
-            let mooLp2Tokens = await mooLp2.balanceOf(omnivault.address);
-            let mooLp3Tokens = await mooLp3.balanceOf(omnivault.address);
+            await omnivault.connect(admin).redistribute([mooLp1.address, mooLp2.address, mooLp3.address], [33, 33, 33], [lp1BoostAddress, ethers.constants.AddressZero, ethers.constants.AddressZero]);
+            let mooLp1Tokens = await omnivault.getVaultBalanceOf(mooLp1.address);
+            let mooLp2Tokens = await omnivault.getVaultBalanceOf(mooLp2.address);
+            let mooLp3Tokens = await omnivault.getVaultBalanceOf(mooLp3.address);
 
-            //Existing allocation of mooLp1
-            expect(Number(mooLp1TokensBefore)).greaterThan(0)
+
+            expect(Number(mooLp1TokensBefore)).to.be.greaterThan(0)
             expect(mooLp2TokensBefore).to.equal(0);
             expect(mooLp3TokensBefore).to.equal(0);
 
+            expect(Number(await omnivault.getVaultBalanceOf(mooLp1.address))).to.be.lessThan(Number(mooLp1TokensBefore));
             expect(Number(mooLp1Tokens)).lessThan(Number(mooLp1TokensBefore));
             expect(Number(mooLp2Tokens)).greaterThan(Number(mooLp2TokensBefore));
             expect(Number(mooLp3Tokens)).greaterThan(Number(mooLp3TokensBefore));
@@ -209,12 +204,12 @@ describe("Omnivault Tests", function () {
         it("Simulate these LPs rising in value", async function () {
             await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("1000", 6));
             await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("1000", 6));
-            let totalFunds = await mooLp1.balanceOf(omnivault.address);
+            let totalFunds = await omnivault.getVaultBalanceOf(mooLp1.address);
             let simulatedWithdrawValueBefore = await omnivault.connect(signers[0]).callStatic.withdraw(usdc.address, 100);
             await simulateIncreasedValueOfLP(mooLp1.address, ethers.utils.parseEther("5"), mooLp1.address);
             // The LPs should be worth more, let's check this.
             let simulatedWithdrawValueAfter = await omnivault.connect(signers[0]).callStatic.withdraw(usdc.address, 100);
-            let totalFundsAfter = await mooLp1.balanceOf(omnivault.address);
+            let totalFundsAfter = await omnivault.getVaultBalanceOf(mooLp1.address);
             expect(Number(simulatedWithdrawValueAfter)).greaterThan(Number(simulatedWithdrawValueBefore));
             // These numbers should be equal, to check that the vault is purely only gaining value from the LPs
             expect(totalFundsAfter).to.equal(totalFunds);
@@ -225,7 +220,7 @@ describe("Omnivault Tests", function () {
                 await usdc.connect(signers[i]).approve(omnivault.address, amountIn);
                 await omnivault.connect(signers[i]).deposit(usdc.address, amountIn);
             }
-            await simulateIncreasedValueOfLP(mooLp1.address, ethers.utils.parseEther("5"), mooLp1.address);
+            await simulateIncreasedValueOfLP(mooLp1.address, ethers.utils.parseEther("60"), mooLp1.address);
             for (let i = 0; i < 5; i++) {
                 let balUsdcBefore = await usdc.balanceOf(signers[i].address);
                 await omnivault.connect(signers[i]).withdraw(usdc.address, 100);
@@ -306,9 +301,9 @@ describe("Omnivault Tests", function () {
             await omnivault.skimYieldFeeAndSendToAdmin();
 
             let allActiveUsers = await omnivault.getActiveUsers();
-            let mooLp1BalanceBefore = await mooLp1.balanceOf(omnivault.address);
-            let mooLp2BalanceBefore = await mooLp2.balanceOf(omnivault.address);
-            let mooLp3BalanceBefore = await mooLp3.balanceOf(omnivault.address);
+            let mooLp1BalanceBefore = await omnivault.getVaultBalanceOf(mooLp1.address);
+            let mooLp2BalanceBefore = await omnivault.getVaultBalanceOf(mooLp2.address);
+            let mooLp3BalanceBefore = await omnivault.getVaultBalanceOf(mooLp3.address);
 
             let mooLpCounter1 = 0;
             let mooLpCounter2 = 0;
@@ -342,7 +337,7 @@ describe("Omnivault Tests", function () {
                 await usdc.connect(signers[i]).approve(omnivault.address, ethers.utils.parseUnits("1000", 6));
                 await omnivault.connect(signers[i]).deposit(usdc.address, ethers.utils.parseUnits("1000", 6));
             }
-            await omnivault.connect(signers[19]).redistribute([mooLp1.address, mooLp2.address, mooLp3.address], [33, 33, 33], [ethers.constants.AddressZero, ethers.constants.AddressZero, ethers.constants.AddressZero])
+            await omnivault.connect(signers[19]).redistribute([mooLp1.address, mooLp2.address, mooLp3.address], [33, 33, 33], [lp1BoostAddress, ethers.constants.AddressZero, ethers.constants.AddressZero])
             await simulateIncreasedValueOfLP(mooLp1.address, ethers.utils.parseEther("10"), mooLp1.address);
             await simulateIncreasedValueOfLP(mooLp2.address, ethers.utils.parseEther("10"), mooLp2.address);
             await simulateIncreasedValueOfLP(mooLp3.address, ethers.utils.parseEther("10"), mooLp3.address);
@@ -351,9 +346,9 @@ describe("Omnivault Tests", function () {
             await omnivault.skimYieldFeeAndSendToAdmin();
 
             let allActiveUsers = await omnivault.getActiveUsers();
-            let mooLp1BalanceBefore = await mooLp1.balanceOf(omnivault.address);
-            let mooLp2BalanceBefore = await mooLp2.balanceOf(omnivault.address);
-            let mooLp3BalanceBefore = await mooLp3.balanceOf(omnivault.address);
+            let mooLp1BalanceBefore = await omnivault.getVaultBalanceOf(mooLp1.address);
+            let mooLp2BalanceBefore = await omnivault.getVaultBalanceOf(mooLp2.address);
+            let mooLp3BalanceBefore = await omnivault.getVaultBalanceOf(mooLp3.address);
 
             let mooLpCounter1 = 0;
             let mooLpCounter2 = 0;
@@ -386,7 +381,7 @@ describe("Omnivault Tests", function () {
                 await usdc.connect(signers[i]).approve(omnivault.address, ethers.utils.parseUnits("1000", 6));
                 await omnivault.connect(signers[i]).deposit(usdc.address, ethers.utils.parseUnits("1000", 6));
             }
-            await omnivault.connect(signers[19]).redistribute([mooLp1.address, mooLp2.address, mooLp3.address], [33, 33, 33], [ethers.constants.AddressZero, ethers.constants.AddressZero, ethers.constants.AddressZero])
+            await omnivault.connect(signers[19]).redistribute([mooLp1.address, mooLp2.address, mooLp3.address], [33, 33, 33], [lp1BoostAddress, ethers.constants.AddressZero, ethers.constants.AddressZero])
             await simulateIncreasedValueOfLP(mooLp1.address, ethers.utils.parseEther("10"), mooLp1.address);
             await simulateIncreasedValueOfLP(mooLp2.address, ethers.utils.parseEther("10"), mooLp2.address);
             await simulateIncreasedValueOfLP(mooLp3.address, ethers.utils.parseEther("10"), mooLp3.address);
@@ -396,9 +391,9 @@ describe("Omnivault Tests", function () {
             await omnivault.skimYieldFeeAndSendToAdmin();
 
             let allActiveUsers = await omnivault.getActiveUsers();
-            let mooLp1BalanceBefore = await mooLp1.balanceOf(omnivault.address);
-            let mooLp2BalanceBefore = await mooLp2.balanceOf(omnivault.address);
-            let mooLp3BalanceBefore = await mooLp3.balanceOf(omnivault.address);
+            let mooLp1BalanceBefore = await omnivault.getVaultBalanceOf(mooLp1.address);
+            let mooLp2BalanceBefore = await omnivault.getVaultBalanceOf(mooLp2.address);
+            let mooLp3BalanceBefore = await omnivault.getVaultBalanceOf(mooLp3.address);
 
             let mooLpCounter1 = 0;
             let mooLpCounter2 = 0;
@@ -434,13 +429,13 @@ describe("Omnivault Tests", function () {
             await simulateIncreasedValueOfLP(mooLp2.address, ethers.utils.parseEther("10"), mooLp2.address);
             await simulateIncreasedValueOfLP(mooLp3.address, ethers.utils.parseEther("10"), mooLp3.address);
             // Fee gets skimmed already here
-            await omnivault.connect(signers[19]).redistribute([mooLp1.address, mooLp2.address, mooLp3.address], [10, 50, 40], [ethers.constants.AddressZero, ethers.constants.AddressZero, ethers.constants.AddressZero])
+            await omnivault.connect(signers[19]).redistribute([mooLp1.address, mooLp2.address, mooLp3.address], [10, 50, 40], [lp1BoostAddress, ethers.constants.AddressZero, ethers.constants.AddressZero])
 
 
             allActiveUsers = await omnivault.getActiveUsers();
-            mooLp1BalanceBefore = await mooLp1.balanceOf(omnivault.address);
-            mooLp2BalanceBefore = await mooLp2.balanceOf(omnivault.address);
-            mooLp3BalanceBefore = await mooLp3.balanceOf(omnivault.address);
+            mooLp1BalanceBefore = await omnivault.getVaultBalanceOf(mooLp1.address);
+            mooLp2BalanceBefore = await omnivault.getVaultBalanceOf(mooLp2.address);
+            mooLp3BalanceBefore = await omnivault.getVaultBalanceOf(mooLp3.address);
 
             mooLpCounter1 = 0;
             mooLpCounter2 = 0;
@@ -471,13 +466,13 @@ describe("Omnivault Tests", function () {
             await simulateIncreasedValueOfLP(mooLp1.address, ethers.utils.parseEther("10"), mooLp1.address);
             await simulateIncreasedValueOfLP(mooLp2.address, ethers.utils.parseEther("10"), mooLp2.address);
             await simulateIncreasedValueOfLP(mooLp3.address, ethers.utils.parseEther("10"), mooLp3.address);
-            await omnivault.connect(signers[19]).redistribute([mooLp1.address, mooLp2.address, mooLp3.address], [30, 40, 30], [ethers.constants.AddressZero, ethers.constants.AddressZero, ethers.constants.AddressZero])
+            await omnivault.connect(signers[19]).redistribute([mooLp1.address, mooLp2.address, mooLp3.address], [30, 40, 30], [lp1BoostAddress, ethers.constants.AddressZero, ethers.constants.AddressZero])
 
 
             allActiveUsers = await omnivault.getActiveUsers();
-            mooLp1BalanceBefore = await mooLp1.balanceOf(omnivault.address);
-            mooLp2BalanceBefore = await mooLp2.balanceOf(omnivault.address);
-            mooLp3BalanceBefore = await mooLp3.balanceOf(omnivault.address);
+            mooLp1BalanceBefore = await omnivault.getVaultBalanceOf(mooLp1.address);
+            mooLp2BalanceBefore = await omnivault.getVaultBalanceOf(mooLp2.address);
+            mooLp3BalanceBefore = await omnivault.getVaultBalanceOf(mooLp3.address);
 
             mooLpCounter1 = 0;
             mooLpCounter2 = 0;
@@ -507,185 +502,7 @@ describe("Omnivault Tests", function () {
         })
 
     })
-    describe("Check gas efficiency of core functions", function () {
-        it("Check respective gas price of skimYield: 1 depositor", async function () {
-            await omnivault.connect(signers[19]).setFeeOnYield(1000);
-            for (let i = 0; i < 1; i++) {
-                await usdc.connect(signers[i]).approve(omnivault.address, ethers.utils.parseUnits("1000", 6));
-                await omnivault.connect(signers[i]).deposit(usdc.address, ethers.utils.parseUnits("1000", 6));
-            }
-            await omnivault.connect(signers[19]).redistribute([mooLp1.address, mooLp2.address, mooLp3.address], [33, 33, 33], [ethers.constants.AddressZero, ethers.constants.AddressZero, ethers.constants.AddressZero])
-            await simulateIncreasedValueOfLP(mooLp1.address, ethers.utils.parseEther("10"), mooLp1.address);
-            await simulateIncreasedValueOfLP(mooLp2.address, ethers.utils.parseEther("10"), mooLp2.address);
-            await simulateIncreasedValueOfLP(mooLp3.address, ethers.utils.parseEther("10"), mooLp3.address);
-            // Skip some time to force fee skimming
-            await ethers.provider.send("evm_increaseTime", [700]);
-            console.log("Gas estimated for skimYield for 1 depositor:", await omnivault.estimateGas.skimYieldFeeAndSendToAdmin())
-        })
-        it("Check respective gas price of skimYield: 10 depositors", async function () {
-            await omnivault.connect(signers[19]).setFeeOnYield(1000);
-            for (let i = 0; i < 10; i++) {
-                await usdc.connect(signers[i]).approve(omnivault.address, ethers.utils.parseUnits("1000", 6));
-                await omnivault.connect(signers[i]).deposit(usdc.address, ethers.utils.parseUnits("1000", 6));
-            }
-            await omnivault.connect(signers[19]).redistribute([mooLp1.address, mooLp2.address, mooLp3.address], [33, 33, 33], [ethers.constants.AddressZero, ethers.constants.AddressZero, ethers.constants.AddressZero])
-            await simulateIncreasedValueOfLP(mooLp1.address, ethers.utils.parseEther("10"), mooLp1.address);
-            await simulateIncreasedValueOfLP(mooLp2.address, ethers.utils.parseEther("10"), mooLp2.address);
-            await simulateIncreasedValueOfLP(mooLp3.address, ethers.utils.parseEther("10"), mooLp3.address);
-            // Skip some time to force fee skimming
-            await ethers.provider.send("evm_increaseTime", [700]);
-            console.log("Gas estimated for skimYield for 10 depositors:", await omnivault.estimateGas.skimYieldFeeAndSendToAdmin())
-        })
-        // This is left in as a hypothetical test to see how gas inefficient the fee skimming is.
-        // It is not run by default as it takes a long time to run.
-        // This is the usual output
-        // Gas estimated for skimYield for 100 depositors: BigNumber { value: "3666096" }
-        // it.only("Check respective gas price of skimYield: 100 depositors", async function () {
-        //     await omnivault.connect(signers[19]).setFeeOnYield(1000);
 
-        //     for (let i = 0; i < 100; i++) {
-        //         // Get a new wallet
-        //         let wallet = ethers.Wallet.createRandom();
-        //         // add the provider from Hardhat
-        //         wallet = wallet.connect(ethers.provider);
-        //         // send ETH to the new wallet so it can perform a tx
-        //         await signers[10].sendTransaction({ to: wallet.address, value: ethers.utils.parseEther("0.1") });
-        //         // Send it some usdc
-        //         let usdWhale = await ethers.getImpersonatedSigner("0xebe80f029b1c02862b9e8a70a7e5317c06f62cae")
-        //         // Send 1 eth to the whale
-        //         await signers[0].sendTransaction({ to: usdWhale.address, value: ethers.utils.parseEther("1") })
-        //         // Send some usdc
-        //         await usdc.connect(usdWhale).transfer(wallet.address, ethers.utils.parseUnits("100", 6))
-        //         await usdc.connect(wallet).approve(omnivault.address, ethers.utils.parseUnits("100", 6));
-        //         await omnivault.connect(wallet).deposit(usdc.address, ethers.utils.parseUnits("100", 6));
-        //         console.log("Done, wallet", i);
-
-        //     }
-        //     await omnivault.connect(signers[19]).redistribute([mooLp1.address, mooLp2.address, mooLp3.address], [33, 33, 33], [ethers.constants.AddressZero, ethers.constants.AddressZero, ethers.constants.AddressZero])
-        //     await simulateIncreasedValueOfLP(mooLp1.address, ethers.utils.parseEther("10"), mooLp1.address);
-        //     await simulateIncreasedValueOfLP(mooLp2.address, ethers.utils.parseEther("10"), mooLp2.address);
-        //     await simulateIncreasedValueOfLP(mooLp3.address, ethers.utils.parseEther("10"), mooLp3.address);
-        //     // Skip some time to force fee skimming
-        //     await ethers.provider.send("evm_increaseTime", [700]);
-        //     console.log("Gas estimated for skimYield for 100 depositors:", await omnivault.estimateGas.skimYieldFeeAndSendToAdmin())
-
-        // })
-    })
-    describe("Admin functions", function () {
-        it("Should update the primary token correctly", async function () {
-            await omnivault.connect(signers[19]).setPrimaryToken(weth.address);
-            expect(await omnivault.primaryToken()).to.be.equal(weth.address);
-        });
-
-        it("Should update the fee correctly", async function () {
-            await omnivault.connect(signers[19]).setFeeOnYield(1000);
-            expect(await omnivault.feeOnYield()).to.be.equal(1000);
-        })
-        it("Should set the exchangeAddress correctly", async function () {
-            await omnivault.connect(signers[19]).setExchangeAddress(exchange.address);
-            expect(await omnivault.exchangeAddress()).to.be.equal(exchange.address);
-        })
-
-        it("Should set skimYieldPeriod correctly", async function () {
-            await omnivault.connect(signers[19]).setSkimYieldPeriod(100);
-            expect(await omnivault.skimYieldPeriod()).to.be.equal(100);
-        })
-        it("Should set boost vault correctly", async function () {
-            await omnivault.connect(signers[19]).setBoostVault(mooLp1.address, mooLp2.address);
-            expect(await omnivault.vaultToBoost(mooLp1.address)).to.be.equal(mooLp2.address);
-        })
-
-        it("Should set min reward token for swap correctly", async function () {
-            await omnivault.connect(signers[19]).setRewardTokenToMinSwapAmount(mooLp1.address, ethers.utils.parseUnits("100", 6));
-            expect(await omnivault.rewardTokenToMinSwapAmount(mooLp1.address)).to.be.equal(ethers.utils.parseUnits("100", 6));
-        })
-        it("Should claim fees correctly", async function () {
-            await omnivault.connect(signers[19]).setFeeOnYield(1000);
-
-            await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("1000", 6));
-            await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("1000", 6));
-            await simulateIncreasedValueOfLP(mooLp1.address, ethers.utils.parseEther("10"), mooLp1.address);
-            let adminUSDCBalanceBefore = await usdc.balanceOf(admin.address);
-            // Skip some time to force fee skimming
-            await ethers.provider.send("evm_increaseTime", [700]);
-            await omnivault.connect(signers[0]).withdraw(usdc.address, 100)
-            await omnivault.connect(signers[19]).claimAdminFees()
-            expect(Number(await usdc.balanceOf(admin.address))).to.be.greaterThan(Number(adminUSDCBalanceBefore));
-        })
-
-        it("Claiming fees when it is zero should revert", async function () {
-            await expect(omnivault.connect(signers[19]).claimAdminFees()).to.be.revertedWith("NO_FEES")
-        })
-
-    })
-
-    describe("View functions", function () {
-        it("Get active vaults", async function () {
-            let activeVaults = await omnivault.getActiveUnderlyingVaults();
-            expect(activeVaults.length).to.be.equal(1);
-            expect(activeVaults[0]).to.be.equal(mooLp1.address);
-        })
-
-        it("Get active vault percentages", async function () {
-            let percentages = await omnivault.getUnderlyingVaultsPercents();
-            expect(percentages.length).to.be.equal(1);
-            expect(percentages[0]).to.be.equal(100);
-        })
-
-        it("Get active users (with no depositors should return length 0)", async function () {
-            let users = await omnivault.getActiveUsers();
-            expect(users.length).to.be.equal(0);
-        })
-        it("Get active users (with 5 depositors should return length 5)", async function () {
-            for (let i = 0; i < 5; i++) {
-                await usdc.connect(signers[i]).approve(omnivault.address, ethers.utils.parseUnits("1000", 6));
-                await omnivault.connect(signers[i]).deposit(usdc.address, ethers.utils.parseUnits("1000", 6));
-            }
-            let users = await omnivault.getActiveUsers();
-            expect(users.length).to.be.equal(5);
-        })
-
-        it("Get active users should return 4 if there were 5 depositors and one withdrew 100%", async function () {
-            for (let i = 0; i < 5; i++) {
-                await usdc.connect(signers[i]).approve(omnivault.address, ethers.utils.parseUnits("1000", 6));
-                await omnivault.connect(signers[i]).deposit(usdc.address, ethers.utils.parseUnits("1000", 6));
-            }
-            await omnivault.connect(signers[0]).withdraw(usdc.address, 100)
-            let users = await omnivault.getActiveUsers();
-
-            expect(users.length).to.be.equal(4);
-        })
-
-        it("Get active users should return 5 if there were 5 depositors and one withdrew 50%", async function () {
-            for (let i = 0; i < 5; i++) {
-                await usdc.connect(signers[i]).approve(omnivault.address, ethers.utils.parseUnits("1000", 6));
-                await omnivault.connect(signers[i]).deposit(usdc.address, ethers.utils.parseUnits("1000", 6));
-            }
-            await omnivault.connect(signers[0]).withdraw(usdc.address, 50)
-            let users = await omnivault.getActiveUsers();
-
-            expect(users.length).to.be.equal(5);
-        })
-
-        it("BalanceOf for a user who has deposited should return all non zero numbers", async function () {
-            await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("1000", 6));
-            await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("1000", 6));
-            let balance = await omnivault.balanceOf(signers[0].address);
-            let vaults = balance[0];
-            let balances = balance[1];
-            expect(balances.length).to.be.equal(1);
-            expect(vaults.length).to.be.equal(1);
-            expect(Number(balances[0])).to.be.greaterThan(0);
-        })
-        it("BalanceOf for a user who has not deposited should return 0 for all vaults", async function () {
-            let balance = await omnivault.balanceOf(signers[0].address);
-            let vaults = balance[0];
-            let balances = balance[1];
-            expect(balances.length).to.be.equal(1);
-            expect(vaults.length).to.be.equal(1);
-            expect(Number(balances[0])).to.be.equal(0);
-        })
-    })
 
     async function simulateIncreasedValueOfLP(vault: string, amount: BigNumber, recipient: string) {
         // Unfortunately we have not added all the underlying LPs, therefore we will use this round abotu method to get the underlying LP.
