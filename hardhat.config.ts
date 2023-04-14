@@ -58,13 +58,14 @@ const config: HardhatUserConfig = {
         mnemonic: process.env.MNEMONIC,
       },
     },
-    // fantom: {
-    //   url: process.env.FANTOM_URL,
-    //   gasPrice: "auto",
-    //   accounts: {
-    //     mnemonic: process.env.MNEMONIC,
-    //   },
-    // },
+
+    optimism: {
+      url: process.env.OPTIMISM_FORKING_URL,
+      gasPrice: "auto",
+      accounts: {
+        [process.env.ALLUO_DEPLOYER as string]: [process.env.ALLUO_DEPLOYER_PRIVATE_KEY as string],
+      },
+    },
     // TESTNETS
     mumbai: {
       url: process.env.MUMBAI_URL,
@@ -73,13 +74,7 @@ const config: HardhatUserConfig = {
         mnemonic: process.env.MNEMONIC,
       },
     },
-    // kovan: {
-    //   url: process.env.KOVAN_URL,
-    //   gasPrice: "auto",
-    //   accounts: {
-    //     mnemonic: process.env.MNEMONIC,
-    //   },
-    // },
+
     rinkeby: {
       url: process.env.RINKEBY_URL,
       gasPrice: 25000000000,
@@ -94,13 +89,7 @@ const config: HardhatUserConfig = {
         mnemonic: process.env.MNEMONIC,
       },
     },
-    // sepolia: {
-    //   url: process.env.SEPOLIA_URL,
-    //   gasPrice: "auto",
-    //   accounts: {
-    //     mnemonic: process.env.MNEMONIC,
-    //   },
-    // },
+
   },
 
   gasReporter: {
@@ -108,11 +97,11 @@ const config: HardhatUserConfig = {
     currency: "USD",
   },
   etherscan: {
-    apiKey: process.env.ETHERSCAN_API_KEY,
-    // apiKey: process.env.FTMSCAN_API_KEY,
-    // apiKey: process.env.POLYGONSCAN_API_KEY,
-
-
+    apiKey: {
+      mainnet: process.env.ETHERSCAN_API_KEY != undefined ? process.env.ETHERSCAN_API_KEY : "",
+      polygon: process.env.POLYGONSCAN_API_KEY != undefined ? process.env.POLYGONSCAN_API_KEY : "",
+      optimism: process.env.OPTIMISMSCAN_API_KEY != undefined ? process.env.OPTIMISMSCAN_API_KEY : ""
+    }
   },
 
   mocha: {

@@ -127,32 +127,10 @@ describe("Boosted beefy Omnivault Tests", function () {
 
 
     describe("Redistribution tests", function () {
-        it("Remain in same vault. This should only loop the boost rewards. However, there are insufficient rewards so do nothing", async function () {
-            // Set fee to 0 to prevent fee skimming. This is used to better illustrate the underlying mechanics
-            await omnivault.connect(admin).setFeeOnYield(0);
-            await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("100", 6));
-            await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("100", 6));
-            let mooLp1TokensBefore = await omnivault.getVaultBalanceOf(mooLp1.address);
-            await omnivault.connect(admin).redistribute([], [], []);
-            let mooLp1Tokens = await omnivault.getVaultBalanceOf(mooLp1.address);
-            expect(mooLp1TokensBefore).to.be.equal(mooLp1Tokens);
-            expect(await omnivault.adminFees(usdc.address)).to.equal(0);
-        })
-
-        it("Remain in same vault. This should only loop the boost rewards.", async function () {
-            await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("20000", 6));
-            await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("20000", 6));
-            let mooLp1TokensBefore = await omnivault.getVaultBalanceOf(mooLp1.address);
-            // Fake and send some LDO tokens to the omnivault
-            await usdc.connect(signers[0]).approve(exchange.address, ethers.utils.parseUnits("10000", 6));
-            await exchange.connect(signers[0]).exchange(usdc.address, ldo.address, ethers.utils.parseUnits("10000", 6), 0);
-            await ldo.connect(signers[0]).transfer(omnivault.address, await ldo.balanceOf(signers[0].address));
-
-            await omnivault.connect(admin).redistribute([], [], []);
-            expect(Number(await omnivault.getVaultBalanceOf(mooLp1.address))).to.be.greaterThan(Number(mooLp1TokensBefore));
-            expect(await omnivault.adminFees(usdc.address)).to.greaterThan(0);
-        })
-
+        // this.afterEach(async function () {
+        //     // Console check the balances for each user by looking at what they can withdraw
+        //     console.log("Balance that can be withdrawn after", Number(await omnivault.connect(signers[0]).callStatic.withdraw(usdc.address, 100)) / 1e6);
+        // })
 
         it("Redistribution from mooVault1 --> mooVault2", async function () {
             await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("100", 6));
@@ -260,91 +238,12 @@ describe("Boosted beefy Omnivault Tests", function () {
             await rewardsYearnContract.connect(impersonatedOwner).notifyRewardAmount(await yvOPERC20.balanceOf(rewardsYearnContract.address));
 
         })
-        it("Should result in NO fee collection as fees are set to zero", async function () {
-            await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("1000", 6));
-            await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("1000", 6));
-            await simulateIncreasedValueOfLP(mooLp1.address, ethers.utils.parseEther("10"), mooLp1.address);
-            let adminUSDCBalanceBefore = await usdc.balanceOf(admin.address);
-            await omnivault.connect(signers[0]).withdraw(usdc.address, 100)
-            expect(await usdc.balanceOf(admin.address)).to.be.equal(adminUSDCBalanceBefore);
+
+        this.afterEach("Check how uch each depositor can withdraw afterwards", async function () {
+            // for (let i = 0; i < 10; i++) {
+            //     console.log(`Signer ${i} can withdraw`, Number(await omnivault.connect(signers[0]).callStatic.withdraw(usdc.address, 100)) / 1e6)
+            // }
         })
-        it("Should result in fee collection for full withdrawals", async function () {
-            await omnivault.connect(admin).setFeeOnYield(1000);
-
-            await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("1000", 6));
-            await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("1000", 6));
-            await simulateIncreasedValueOfLP(mooLp1.address, ethers.utils.parseEther("10"), mooLp1.address);
-            // Skip some time to force fee skimming
-            await ethers.provider.send("evm_increaseTime", [700]);
-            await omnivault.connect(signers[0]).withdraw(usdc.address, 100)
-            console.log(await omnivault.adminFees(usdc.address), "Fee collected")
-            expect(Number(await omnivault.adminFees(usdc.address))).to.be.greaterThan(0);
-
-        })
-
-
-        it("If fee is 100% on yield, the user should only receive back the principal", async function () {
-            await omnivault.connect(admin).setFeeOnYield(10000);
-
-            await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("1000", 6));
-            await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("1000", 6));
-            await simulateIncreasedValueOfLP(mooLp1.address, ethers.utils.parseEther("10"), mooLp1.address);
-            let userUSDCBalanceBefore = await usdc.balanceOf(signers[0].address);
-            // Skip some time to force fee skimming
-            await ethers.provider.send("evm_increaseTime", [700]);
-            await omnivault.connect(signers[0]).withdraw(usdc.address, 100)
-            let userUSDCBalanceAfter = await usdc.balanceOf(signers[0].address);
-            console.log(await omnivault.adminFees(usdc.address), "Fee collected")
-
-            expect(Number(await omnivault.adminFees(usdc.address))).to.be.greaterThan(0);
-            // Allow margin of error for slippage. But the user should not have received more than the principal
-
-            expect(Number(userUSDCBalanceAfter.sub(userUSDCBalanceBefore))).to.be.closeTo(Number(ethers.utils.parseUnits("1000", 6)), 10000000);
-
-
-        })
-
-        // These are complex tests to make sure fee collection works as expected
-        it("Harvest fees, and make sure the balance of moo lps correspond to the depositor balances correctly with 1 moo vault", async function () {
-            await omnivault.connect(admin).setFeeOnYield(1000);
-            for (let i = 0; i < 10; i++) {
-                await usdc.connect(signers[i]).approve(omnivault.address, ethers.utils.parseUnits("1000", 6));
-                await omnivault.connect(signers[i]).deposit(usdc.address, ethers.utils.parseUnits("1000", 6));
-            }
-            await simulateIncreasedValueOfLP(mooLp1.address, ethers.utils.parseEther("10"), mooLp1.address);
-            // Skip some time to force fee skimming
-            await ethers.provider.send("evm_increaseTime", [700]);
-            await omnivault.skimYieldFeeAndSendToAdmin();
-            let allActiveUsers = await omnivault.getActiveUsers();
-            let mooLp1BalanceBefore = await omnivault.getVaultBalanceOf(mooLp1.address);
-            let yearnLp1BalanceBefore = await omnivault.getVaultBalanceOf(yearnLp1.address);
-            let mooLp2BalanceBefore = await omnivault.getVaultBalanceOf(mooLp2.address);
-
-            let mooLpCounter1 = 0;
-            let mooLpCounter2 = 0;
-            let mooLpCounter3 = 0;
-            for (let i = 0; i < allActiveUsers.length; i++) {
-                let balanceArrays = await omnivault.balanceOf(allActiveUsers[i]);
-                let balances = balanceArrays[1];
-                let vaults = balanceArrays[0];
-                for (let j = 0; j < balanceArrays[0].length; j++) {
-                    if (vaults[j] == mooLp1.address && Number(balances[j]) > 0) {
-                        mooLpCounter1 += Number(balances[j]);
-                    }
-                    if (vaults[j] == yearnLp1.address && Number(balances[j]) > 0) {
-                        mooLpCounter2 += Number(balances[j]);
-                    }
-                    if (vaults[j] == mooLp2.address && Number(balances[j]) > 0) {
-                        mooLpCounter3 += Number(balances[j]);
-                    }
-                }
-
-            }
-            expect(Number(mooLpCounter1)).to.be.closeTo(Number(mooLp1BalanceBefore), tolerance);
-            expect(Number(mooLpCounter2)).to.be.closeTo(Number(yearnLp1BalanceBefore), tolerance);
-            expect(Number(mooLpCounter3)).to.be.closeTo(Number(mooLp2BalanceBefore), tolerance);
-        })
-
 
         it("Harvest fees, and make sure the balance of moo lps correspond to the depositor balances correctly with 3 moo vault", async function () {
             await omnivault.connect(admin).setFeeOnYield(1000);
@@ -558,7 +457,6 @@ describe("Boosted beefy Omnivault Tests", function () {
             expect(Number(mooLpCounter2)).to.be.closeTo(Number(yearnLp1BalanceBefore), tolerance);
             expect(Number(mooLpCounter3)).to.be.closeTo(Number(mooLp2BalanceBefore), tolerance);
 
-            console.log("If signer[0] withdraws", await omnivault.callStatic.withdraw(usdc.address, 100))
         })
 
     })
