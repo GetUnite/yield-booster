@@ -272,7 +272,10 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
                         (getVaultBalanceOf(vaultAddress) + lpTokensToWithdraw);
                     uint256 userLpFee = (lpTokensToWithdraw *
                         userShareBeforeSwap) / 1e18;
-
+                    console.log("User balance", userBalance);
+                    console.log("User share before swap", userShareBeforeSwap);
+                    console.log("User lp fee", userLpFee);
+                    console.log("New balance", userBalance - userLpFee);
                     balances[userAddress][vaultAddress] =
                         userBalance -
                         userLpFee;
@@ -478,16 +481,25 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
                     vaultInitialBalances[j];
                 uint256 userPrimaryTokens = (primaryTokensList[j] *
                     vaultPercentage) / 1e18;
+                console.log("Vault Address", vaultAddress);
+                console.log("User vault balance", userVaultBalance);
+                console.log("Vault percentage", vaultPercentage);
+                console.log("Primary tokens", primaryTokensList[j]);
+                console.log("User primary tokens", userPrimaryTokens);
                 userTotalPrimaryTokens += userPrimaryTokens;
                 delete balances[user][vaultAddress];
             }
 
             uint256 userPercentage = (userTotalPrimaryTokens * 1e18) /
                 totalPrimaryTokens;
+            console.log("User percentage", userPercentage);
+
             for (uint256 j = 0; j < newVaults.length; j++) {
                 address newVaultAddress = newVaults[j];
                 uint256 newUserVaultTokens = (newVaultBalances[j] *
                     userPercentage) / 1e18;
+                console.log("New vault balance", newVaultBalances[j]);
+                console.log("New user vault tokens", newUserVaultTokens);
                 balances[user][newVaultAddress] = newUserVaultTokens;
             }
         }
@@ -512,7 +524,11 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         }
     }
 
-    function claimAdminFees() external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function claimAdminFees()
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+        returns (uint256)
+    {
         uint256 feeAmount = adminFees[primaryToken];
         require(feeAmount > 0, "NO_FEES");
         adminFees[primaryToken] = 0;
@@ -520,6 +536,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
             msg.sender,
             feeAmount
         );
+        return feeAmount;
     }
 
     function getVaultBalanceOf(
