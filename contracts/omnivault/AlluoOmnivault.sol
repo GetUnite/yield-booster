@@ -219,7 +219,6 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         if (feeOnYield == 0) {
             return;
         }
-        console.log("Gothere0");
 
         for (uint256 i = 0; i < activeUnderlyingVaults.length(); i++) {
             address vaultAddress = activeUnderlyingVaults.at(i);
@@ -228,7 +227,6 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
                 vaultAddress
             ];
 
-            console.log("Inside loop");
             console.log("currentPricePerFullShare", currentPricePerFullShare);
             console.log("previousPricePerFullShare", previousPricePerFullShare);
             if (currentPricePerFullShare > previousPricePerFullShare) {
@@ -373,7 +371,6 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
 
     function _harvestAndCreditUsers() internal {
         uint256 boostedRewards = _swapBoostedRewards();
-        console.log("Boosted rewards", boostedRewards);
         if (boostedRewards > 0) {
             uint256[] memory _vaultInitialBalances = _iterativeDeposit(
                 primaryToken,
