@@ -8,7 +8,6 @@ import '@openzeppelin/hardhat-upgrades';
 import "@nomicfoundation/hardhat-toolbox";
 
 dotenv.config();
-
 const config: HardhatUserConfig = {
   solidity: {
     compilers: [
@@ -59,12 +58,10 @@ const config: HardhatUserConfig = {
       },
     },
 
-    optimism: {
+    optimisticEthereum: {
       url: process.env.OPTIMISM_FORKING_URL,
       gasPrice: "auto",
-      accounts: {
-        [process.env.ALLUO_DEPLOYER as string]: [process.env.ALLUO_DEPLOYER_PRIVATE_KEY as string],
-      },
+      accounts: [process.env.ALLUO_DEPLOYER != undefined ? process.env.ALLUO_DEPLOYER : ""]
     },
     // TESTNETS
     mumbai: {
@@ -100,7 +97,7 @@ const config: HardhatUserConfig = {
     apiKey: {
       mainnet: process.env.ETHERSCAN_API_KEY != undefined ? process.env.ETHERSCAN_API_KEY : "",
       polygon: process.env.POLYGONSCAN_API_KEY != undefined ? process.env.POLYGONSCAN_API_KEY : "",
-      optimism: process.env.OPTIMISMSCAN_API_KEY != undefined ? process.env.OPTIMISMSCAN_API_KEY : ""
+      optimisticEthereum: process.env.OPTIMISMSCAN_API_KEY != undefined ? process.env.OPTIMISMSCAN_API_KEY : ""
     }
   },
 

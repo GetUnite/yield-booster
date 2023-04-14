@@ -15,11 +15,11 @@ async function main() {
     const hopUSDCBeefy = await ethers.getContractAt("IERC20MetadataUpgradeable", "0xE2f035f59De6a952FF699b4EDD0f99c466f25fEc");
     const weth = await ethers.getContractAt("IERC20MetadataUpgradeable", "0x4200000000000000000000000000000000000006")
     const exchange = await ethers.getContractAt("Exchange", "0x66Ac11c106C3670988DEFDd24BC75dE786b91095")
-
+    const ALLUO_PROXY_DEPLOYER = "0xD8389Af65F99D1EF67516189b5ff25c33C5e76b3";
 
     let signers = await ethers.getSigners();
     console.log("The current deployer address is", signers[0].address);
-    if (signers[0].address != "0xD8389Af65F99D1EF67516189b5ff25c33C5e76b3") {
+    if (signers[0].address != ALLUO_PROXY_DEPLOYER) {
         console.log("Failed");
         return;
     }
