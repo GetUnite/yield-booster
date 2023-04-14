@@ -50,6 +50,7 @@ describe("Boosted beefy Omnivault Tests", function () {
             usdc.address,
             [mooLp1.address],
             [100],
+            [lp1BoostAddress],
             admin.address,
             0,
             600
@@ -57,8 +58,7 @@ describe("Boosted beefy Omnivault Tests", function () {
             initializer: "initialize",
         })) as AlluoOmnivault;
         // These integration tests will charge 10% fee on yield.
-        await omnivault.connect(signers[19]).setFeeOnYield(1000);
-        await omnivault.connect(admin).setBoostVault(mooLp1.address, lp1BoostAddress);
+        await omnivault.connect(admin).setFeeOnYield(1000);
         await omnivault.connect(admin).setRewardTokenToMinSwapAmount(ldo.address, ethers.utils.parseEther("1"));
 
         let usdWhale = await ethers.getImpersonatedSigner("0xebe80f029b1c02862b9e8a70a7e5317c06f62cae")
@@ -253,7 +253,7 @@ describe("Boosted beefy Omnivault Tests", function () {
             expect(await usdc.balanceOf(admin.address)).to.be.equal(adminUSDCBalanceBefore);
         })
         it("Should result in fee collection for full withdrawals", async function () {
-            await omnivault.connect(signers[19]).setFeeOnYield(1000);
+            await omnivault.connect(admin).setFeeOnYield(1000);
 
             await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("1000", 6));
             await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("1000", 6));
@@ -268,7 +268,7 @@ describe("Boosted beefy Omnivault Tests", function () {
 
 
         it("If fee is 100% on yield, the user should only receive back the principal", async function () {
-            await omnivault.connect(signers[19]).setFeeOnYield(10000);
+            await omnivault.connect(admin).setFeeOnYield(10000);
 
             await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("1000", 6));
             await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("1000", 6));
@@ -290,7 +290,7 @@ describe("Boosted beefy Omnivault Tests", function () {
 
         // These are complex tests to make sure fee collection works as expected
         it("Harvest fees, and make sure the balance of moo lps correspond to the depositor balances correctly with 1 moo vault", async function () {
-            await omnivault.connect(signers[19]).setFeeOnYield(1000);
+            await omnivault.connect(admin).setFeeOnYield(1000);
             for (let i = 0; i < 10; i++) {
                 await usdc.connect(signers[i]).approve(omnivault.address, ethers.utils.parseUnits("1000", 6));
                 await omnivault.connect(signers[i]).deposit(usdc.address, ethers.utils.parseUnits("1000", 6));
@@ -332,12 +332,12 @@ describe("Boosted beefy Omnivault Tests", function () {
 
 
         it("Harvest fees, and make sure the balance of moo lps correspond to the depositor balances correctly with 3 moo vault", async function () {
-            await omnivault.connect(signers[19]).setFeeOnYield(1000);
+            await omnivault.connect(admin).setFeeOnYield(1000);
             for (let i = 0; i < 10; i++) {
                 await usdc.connect(signers[i]).approve(omnivault.address, ethers.utils.parseUnits("1000", 6));
                 await omnivault.connect(signers[i]).deposit(usdc.address, ethers.utils.parseUnits("1000", 6));
             }
-            await omnivault.connect(signers[19]).redistribute([mooLp1.address, mooLp2.address, mooLp3.address], [33, 33, 33], [lp1BoostAddress, ethers.constants.AddressZero, ethers.constants.AddressZero])
+            await omnivault.connect(admin).redistribute([mooLp1.address, mooLp2.address, mooLp3.address], [33, 33, 33], [lp1BoostAddress, ethers.constants.AddressZero, ethers.constants.AddressZero])
             await simulateIncreasedValueOfLP(mooLp1.address, ethers.utils.parseEther("10"), mooLp1.address);
             await simulateIncreasedValueOfLP(mooLp2.address, ethers.utils.parseEther("10"), mooLp2.address);
             await simulateIncreasedValueOfLP(mooLp3.address, ethers.utils.parseEther("10"), mooLp3.address);
@@ -376,12 +376,12 @@ describe("Boosted beefy Omnivault Tests", function () {
         })
 
         it("Multiple redistribution cycles and skimming should ensure that the moo lps are distributed correctly", async function () {
-            await omnivault.connect(signers[19]).setFeeOnYield(1000);
+            await omnivault.connect(admin).setFeeOnYield(1000);
             for (let i = 0; i < 10; i++) {
                 await usdc.connect(signers[i]).approve(omnivault.address, ethers.utils.parseUnits("1000", 6));
                 await omnivault.connect(signers[i]).deposit(usdc.address, ethers.utils.parseUnits("1000", 6));
             }
-            await omnivault.connect(signers[19]).redistribute([mooLp1.address, mooLp2.address, mooLp3.address], [33, 33, 33], [lp1BoostAddress, ethers.constants.AddressZero, ethers.constants.AddressZero])
+            await omnivault.connect(admin).redistribute([mooLp1.address, mooLp2.address, mooLp3.address], [33, 33, 33], [lp1BoostAddress, ethers.constants.AddressZero, ethers.constants.AddressZero])
             await simulateIncreasedValueOfLP(mooLp1.address, ethers.utils.parseEther("10"), mooLp1.address);
             await simulateIncreasedValueOfLP(mooLp2.address, ethers.utils.parseEther("10"), mooLp2.address);
             await simulateIncreasedValueOfLP(mooLp3.address, ethers.utils.parseEther("10"), mooLp3.address);
@@ -429,7 +429,7 @@ describe("Boosted beefy Omnivault Tests", function () {
             await simulateIncreasedValueOfLP(mooLp2.address, ethers.utils.parseEther("10"), mooLp2.address);
             await simulateIncreasedValueOfLP(mooLp3.address, ethers.utils.parseEther("10"), mooLp3.address);
             // Fee gets skimmed already here
-            await omnivault.connect(signers[19]).redistribute([mooLp1.address, mooLp2.address, mooLp3.address], [10, 50, 40], [lp1BoostAddress, ethers.constants.AddressZero, ethers.constants.AddressZero])
+            await omnivault.connect(admin).redistribute([mooLp1.address, mooLp2.address, mooLp3.address], [10, 50, 40], [lp1BoostAddress, ethers.constants.AddressZero, ethers.constants.AddressZero])
 
 
             allActiveUsers = await omnivault.getActiveUsers();
@@ -466,7 +466,7 @@ describe("Boosted beefy Omnivault Tests", function () {
             await simulateIncreasedValueOfLP(mooLp1.address, ethers.utils.parseEther("10"), mooLp1.address);
             await simulateIncreasedValueOfLP(mooLp2.address, ethers.utils.parseEther("10"), mooLp2.address);
             await simulateIncreasedValueOfLP(mooLp3.address, ethers.utils.parseEther("10"), mooLp3.address);
-            await omnivault.connect(signers[19]).redistribute([mooLp1.address, mooLp2.address, mooLp3.address], [30, 40, 30], [lp1BoostAddress, ethers.constants.AddressZero, ethers.constants.AddressZero])
+            await omnivault.connect(admin).redistribute([mooLp1.address, mooLp2.address, mooLp3.address], [30, 40, 30], [lp1BoostAddress, ethers.constants.AddressZero, ethers.constants.AddressZero])
 
 
             allActiveUsers = await omnivault.getActiveUsers();

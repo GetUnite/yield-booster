@@ -49,6 +49,7 @@ describe("Omnivault Tests", function () {
             usdc.address,
             [mooLp1.address],
             [100],
+            [ethers.constants.AddressZero],
             admin.address,
             0,
             600

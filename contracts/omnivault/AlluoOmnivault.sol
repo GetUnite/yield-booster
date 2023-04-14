@@ -51,6 +51,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         address _primaryToken,
         address[] memory _underlyingVaults,
         uint256[] memory _underlyingVaultsPercents,
+        address[] memory _boosts,
         address _admin,
         uint256 _feeOnYield,
         uint256 _skimYieldPeriod
@@ -67,6 +68,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
             lastPricePerFullShare[_underlyingVaults[i]] = getPricePerShare(
                 _underlyingVaults[i]
             );
+            vaultToBoost[_underlyingVaults[i]] = _boosts[i];
         }
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         admin = _admin;
@@ -98,20 +100,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
             amount
         );
 
-        // Swap all into primary token first.
-        if (tokenAddress != primaryToken) {
-            IERC20MetadataUpgradeable(tokenAddress).safeIncreaseAllowance(
-                address(exchangeAddress),
-                amount
-            );
-            amount = exchangeAddress.exchange(
-                tokenAddress,
-                primaryToken,
-                amount,
-                0
-            );
-        }
-        _iterativeDeposit(amount, true);
+        _iterativeDeposit(tokenAddress, amount, true);
         if (activeUsers.contains(msg.sender) == false) {
             activeUsers.add(msg.sender);
         }
@@ -119,32 +108,33 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
 
     // Only in primaryTokens
     function _iterativeDeposit(
+        address token,
         uint256 amount,
         bool isDepositor
     ) internal returns (uint256[] memory) {
-        uint256 remainingPrimaryTokens = amount;
+        uint256 remainingTokens = amount;
         uint256[] memory vaultInitialBalances = new uint256[](
             activeUnderlyingVaults.length()
         );
-        IERC20MetadataUpgradeable(primaryToken).safeIncreaseAllowance(
+        IERC20MetadataUpgradeable(token).safeIncreaseAllowance(
             address(exchangeAddress),
-            remainingPrimaryTokens
+            remainingTokens
         );
         for (uint256 i = 0; i < activeUnderlyingVaults.length(); i++) {
             address vaultAddress = activeUnderlyingVaults.at(i);
             uint256 vaultPercent = underlyingVaultsPercents[vaultAddress];
-            uint256 primaryTokensToSwap = (amount * vaultPercent) / 100;
+            uint256 tokensToSwap = (amount * vaultPercent) / 100;
             vaultInitialBalances[i] = getVaultBalanceOf(vaultAddress);
             if (i == activeUnderlyingVaults.length() - 1) {
-                primaryTokensToSwap = remainingPrimaryTokens;
+                tokensToSwap = remainingTokens;
             } else {
-                remainingPrimaryTokens -= primaryTokensToSwap;
+                remainingTokens -= tokensToSwap;
             }
 
             uint256 newVaultTokens = exchangeAddress.exchange(
-                primaryToken,
+                token,
                 vaultAddress,
-                primaryTokensToSwap,
+                tokensToSwap,
                 0
             );
             _boostIfApplicable(vaultAddress);
@@ -188,6 +178,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
             uint256 vaultAmount = (balances[msg.sender][vaultAddress] *
                 percentage) / 100;
             // If the vault token is inside the beefy boost, exit that first
+
             _unboostIfApplicable(vaultAddress, vaultAmount);
             IERC20MetadataUpgradeable(vaultAddress).safeIncreaseAllowance(
                 address(exchangeAddress),
@@ -228,6 +219,8 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         if (feeOnYield == 0) {
             return;
         }
+        console.log("Gothere0");
+
         for (uint256 i = 0; i < activeUnderlyingVaults.length(); i++) {
             address vaultAddress = activeUnderlyingVaults.at(i);
             uint256 currentPricePerFullShare = getPricePerShare(vaultAddress);
@@ -235,31 +228,35 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
                 vaultAddress
             ];
 
+            console.log("Inside loop");
+            console.log("currentPricePerFullShare", currentPricePerFullShare);
+            console.log("previousPricePerFullShare", previousPricePerFullShare);
             if (currentPricePerFullShare > previousPricePerFullShare) {
                 // Additional yield from reward tokens, only in the LP.
                 uint256 additionalYield = ((currentPricePerFullShare -
                     previousPricePerFullShare) *
-                    getVaultBalanceOf(vaultAddress)) / 1e18;
-
+                    getVaultBalanceOf(vaultAddress));
                 uint256 feeInUnderlyingToken = (additionalYield * feeOnYield) /
                     10000;
-                uint256 lpTokensToWithdraw = (feeInUnderlyingToken * 1e18) /
+                uint256 lpTokensToWithdraw = feeInUnderlyingToken /
                     currentPricePerFullShare;
-
+                console.log("Additional yield", additionalYield);
+                console.log("Fee in underlying token", feeInUnderlyingToken);
+                console.log("Lp tokens to withdraw", lpTokensToWithdraw);
                 IERC20MetadataUpgradeable(vaultAddress).safeIncreaseAllowance(
                     address(exchangeAddress),
                     lpTokensToWithdraw
                 );
-
                 if (vaultToBoost[vaultAddress] != address(0)) {
-                    if (isBeefyVault(vaultAddress))
+                    if (isBeefyVault(vaultAddress)) {
                         IBeefyBoost(vaultToBoost[vaultAddress]).withdraw(
                             lpTokensToWithdraw
                         );
-                    else
+                    } else {
                         IYearnBoost(vaultToBoost[vaultAddress]).withdraw(
                             lpTokensToWithdraw
                         );
+                    }
                 }
                 uint256 feeInPrimaryToken = exchangeAddress.exchange(
                     vaultAddress,
@@ -277,6 +274,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
                         (getVaultBalanceOf(vaultAddress) + lpTokensToWithdraw);
                     uint256 userLpFee = (lpTokensToWithdraw *
                         userShareBeforeSwap) / 1e18;
+
                     balances[userAddress][vaultAddress] =
                         userBalance -
                         userLpFee;
@@ -375,24 +373,28 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
 
     function _harvestAndCreditUsers() internal {
         uint256 boostedRewards = _swapBoostedRewards();
+        console.log("Boosted rewards", boostedRewards);
         if (boostedRewards > 0) {
             uint256[] memory _vaultInitialBalances = _iterativeDeposit(
+                primaryToken,
                 boostedRewards,
                 false
             );
-            for (uint256 i = 0; i < activeUsers.length(); i++) {
-                address user = activeUsers.at(i);
-                for (uint256 j = 0; j < activeUnderlyingVaults.length(); j++) {
-                    address vaultAddress = activeUnderlyingVaults.at(j);
-                    uint256 userVaultBalance = balances[user][vaultAddress];
+            for (uint256 j = 0; j < activeUnderlyingVaults.length(); j++) {
+                address vaultAddress = activeUnderlyingVaults.at(j);
+                uint256 vaultBalance = getVaultBalanceOf(vaultAddress);
 
+                for (uint256 i = 0; i < activeUsers.length(); i++) {
+                    address user = activeUsers.at(i);
+                    uint256 userVaultBalance = balances[user][vaultAddress];
                     uint256 vaultPercentage = (userVaultBalance * 1e18) /
                         _vaultInitialBalances[j];
-                    uint256 vaultBalance = IERC20MetadataUpgradeable(
-                        vaultAddress
-                    ).balanceOf(address(this));
                     uint256 newUserVaultTokens = (vaultBalance *
                         vaultPercentage) / 1e18;
+                    console.log("User vault balance", userVaultBalance);
+                    console.log("Vault percentage", vaultPercentage);
+                    console.log("Vault balance", vaultBalance);
+                    console.log("New user vault tokens", newUserVaultTokens);
                     balances[user][vaultAddress] = newUserVaultTokens;
                 }
             }
@@ -426,8 +428,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
             address vaultAddress = activeUnderlyingVaults.at(i);
             uint256 primaryTokens = _unboostAllAndSwapRewards(vaultAddress);
 
-            uint256 vaultBalance = IERC20MetadataUpgradeable(vaultAddress)
-                .balanceOf(address(this));
+            uint256 vaultBalance = getVaultBalanceOf(vaultAddress);
             vaultInitialBalances[i] = vaultBalance;
             IERC20MetadataUpgradeable(vaultAddress).safeIncreaseAllowance(
                 address(exchangeAddress),
@@ -464,6 +465,12 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
             );
         }
         // Step 3: Loop through every user and calculate how much new vault tokens they are entitled to.
+        uint256[] memory newVaultBalances = new uint256[](newVaults.length);
+
+        for (uint256 j = 0; j < newVaults.length; j++) {
+            newVaultBalances[j] = getVaultBalanceOf(newVaults[j]);
+        }
+
         for (uint256 i = 0; i < activeUsers.length(); i++) {
             address user = activeUsers.at(i);
             uint256 userTotalPrimaryTokens;
@@ -482,10 +489,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
                 totalPrimaryTokens;
             for (uint256 j = 0; j < newVaults.length; j++) {
                 address newVaultAddress = newVaults[j];
-                uint256 newVaultBalance = IERC20MetadataUpgradeable(
-                    newVaultAddress
-                ).balanceOf(address(this));
-                uint256 newUserVaultTokens = (newVaultBalance *
+                uint256 newUserVaultTokens = (newVaultBalances[j] *
                     userPercentage) / 1e18;
                 balances[user][newVaultAddress] = newUserVaultTokens;
             }

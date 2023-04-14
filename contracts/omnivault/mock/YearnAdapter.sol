@@ -30,8 +30,12 @@ interface IExchangeAdapter {
 
 contract YearnAdapter is IExchangeAdapter {
     address public constant USDC = 0x7F5c764cBc14f9669B88837ca1490cCa17c31607;
-    address public constant YEARN_TOKEN =
-        0xaD17A225074191d5c8a37B50FdA1AE278a2EE6A2;
+    address public constant DAI = 0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1;
+
+    address public constant USDT = 0x94b008aA00579c1307B0EF2c499aD98a8ce58e58;
+
+    address public constant WETH = 0x4200000000000000000000000000000000000006;
+    address public constant OP = 0x4200000000000000000000000000000000000042;
 
     // 0x6012856e  =>  executeSwap(address,address,address,uint256)
     function executeSwap(
@@ -40,9 +44,21 @@ contract YearnAdapter is IExchangeAdapter {
         address toToken,
         uint256 amount
     ) external payable returns (uint256) {
-        if (fromToken == USDC && toToken == YEARN_TOKEN) {
+        if (
+            fromToken == USDC ||
+            fromToken == DAI ||
+            fromToken == USDT ||
+            fromToken == WETH ||
+            fromToken == OP
+        ) {
             return IYearnVault(pool).deposit(amount);
-        } else if (fromToken == YEARN_TOKEN && toToken == USDC) {
+        } else if (
+            toToken == USDC ||
+            toToken == DAI ||
+            toToken == USDT ||
+            toToken == WETH ||
+            toToken == OP
+        ) {
             return IYearnVault(pool).withdraw(amount);
         } else {
             revert("Adapter: can't swap");
