@@ -11,23 +11,14 @@ dotenv.config();
 const config: HardhatUserConfig = {
   solidity: {
     compilers: [
+
       {
-        version: "0.8.11",
+        version: "0.8.19",
         settings: {
+          viaIR: true,
           optimizer: {
             enabled: true,
-            runs: 0,
-            // details: { yul: false },
-          },
-        },
-      },
-      {
-        version: "0.8.17",
-        settings: {
-          optimizer: {
-            enabled: true,
-            runs: 0,
-            // details: { yul: false },
+            runs: 29000,
           },
         },
       }
@@ -61,7 +52,8 @@ const config: HardhatUserConfig = {
     optimisticEthereum: {
       url: process.env.OPTIMISM_FORKING_URL,
       gasPrice: "auto",
-      accounts: [process.env.ALLUO_DEPLOYER != undefined ? process.env.ALLUO_DEPLOYER : ""]
+      accounts: process.env.ALLU_DEPLOYER_PRIVATE_KEY != undefined ? [process.env.ALLU_DEPLOYER_PRIVATE_KEY] : { mnemonic: process.env.MNEMONIC as string }
+
     },
     // TESTNETS
     mumbai: {
