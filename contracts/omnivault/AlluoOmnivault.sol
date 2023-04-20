@@ -401,6 +401,110 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         }
     }
 
+    function swapOneVault(
+        address oldVault,
+        address[] memory newVaults,
+        uint256[] memory newPercents,
+        address[] memory boostVaults
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        skimYieldFeeAndSendToAdmin();
+
+        // Step 1: Swap each of the omnivault's tokens to the primary token and note down.
+
+        uint256 primaryTokens = _unboostAllAndSwapRewards(oldVault);
+
+        uint256 vaultInitialBalance = getVaultBalanceOf(oldVault);
+        IERC20MetadataUpgradeable(oldVault).safeIncreaseAllowance(
+            address(exchangeAddress),
+            vaultInitialBalance
+        );
+        primaryTokens += exchangeAddress.exchange(
+            oldVault,
+            primaryToken,
+            vaultInitialBalance,
+            0
+        );
+
+        // Step 2: Swap all of these primary tokens to the correct proportion of new moo tokens.
+        uint256 remainingPrimaryTokens = primaryTokens;
+        IERC20MetadataUpgradeable(primaryToken).safeIncreaseAllowance(
+            address(exchangeAddress),
+            remainingPrimaryTokens
+        );
+
+        uint256[] memory newVaultBalances = new uint256[](newVaults.length);
+
+        for (uint256 i = 0; i < newVaults.length; i++) {
+            uint256 percent = newPercents[i];
+            uint256 primaryTokensToSwap = (primaryTokens * percent) / 100;
+            if (i == newVaults.length - 1) {
+                primaryTokensToSwap = remainingPrimaryTokens;
+            } else {
+                remainingPrimaryTokens -= primaryTokensToSwap;
+            }
+            // These new vault balances are INCREMENTAL new vault balances from the swap
+            newVaultBalances[i] = exchangeAddress.exchange(
+                primaryToken,
+                newVaults[i],
+                primaryTokensToSwap,
+                0
+            );
+        }
+        // Step 3: Loop through every user and calculate how much new vault tokens they are entitled to.
+
+        for (uint256 i = 0; i < activeUsers.length(); i++) {
+            address user = activeUsers.at(i);
+            uint256 userVaultBalance = balances[user][oldVault];
+            uint256 vaultPercentage = (userVaultBalance * 1e18) /
+                vaultInitialBalance;
+            uint256 userPrimaryTokens = (primaryTokens * vaultPercentage) /
+                1e18;
+            console.log("Vault Address", oldVault);
+            console.log("User vault balance", userVaultBalance);
+            console.log("Vault percentage", vaultPercentage);
+            console.log("Primary tokens", primaryTokens);
+            console.log("User primary tokens", userPrimaryTokens);
+            delete balances[user][oldVault];
+
+            uint256 userPercentage = (userPrimaryTokens * 1e18) / primaryTokens;
+            // This is how much of the new swaps he owns.
+            console.log("User percentage", userPercentage);
+
+            for (uint256 j = 0; j < newVaults.length; j++) {
+                address newVaultAddress = newVaults[j];
+                // How much of the incremental new vault tokens the user owns
+                uint256 newUserVaultTokens = (newVaultBalances[j] *
+                    userPercentage) / 1e18;
+                console.log("New vault balance", newVaultBalances[j]);
+                console.log("New user vault tokens", newUserVaultTokens);
+                balances[user][newVaultAddress] += newUserVaultTokens;
+            }
+        }
+
+        // Step 4: Update state variables and remove old vault balance values.
+
+        activeUnderlyingVaults.remove(oldVault);
+        uint256 oldVaultPercentage = underlyingVaultsPercents[oldVault];
+        underlyingVaultsPercents[oldVault] = 0;
+
+        for (uint256 i = 0; i < newVaults.length; i++) {
+            address newVaultAddress = newVaults[i];
+            if (!activeUnderlyingVaults.contains(newVaultAddress)) {
+                activeUnderlyingVaults.add(newVaultAddress);
+            }
+            underlyingVaultsPercents[newVaultAddress] +=
+                (newPercents[i] * oldVaultPercentage) /
+                100;
+            if (boostVaults[i] != address(0)) {
+                vaultToBoost[newVaultAddress] = boostVaults[i];
+            }
+            lastPricePerFullShare[newVaults[i]] = getPricePerShare(
+                newVaults[i]
+            );
+            _boostIfApplicable(newVaultAddress);
+        }
+    }
+
     function redistribute(
         address[] memory newVaults,
         uint256[] memory newPercents,

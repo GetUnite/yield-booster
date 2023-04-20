@@ -123,6 +123,8 @@ describe("Boosted beefy Omnivault Tests", function () {
 
 
     describe("Redistribution tests", function () {
+
+
         it("Remain in same vault. This should only loop the boost rewards. However, there are insufficient rewards so do nothing", async function () {
             // Set fee to 0 to prevent fee skimming. This is used to better illustrate the underlying mechanics
             await omnivault.connect(admin).setFeeOnYield(0);
@@ -197,6 +199,20 @@ describe("Boosted beefy Omnivault Tests", function () {
             expect(Number(mooLp1Tokens)).lessThan(Number(mooLp1TokensBefore));
             expect(Number(mooLp2Tokens)).greaterThan(Number(mooLp2TokensBefore));
             expect(Number(mooLp3Tokens)).greaterThan(Number(mooLp3TokensBefore));
+
+        })
+
+        it("Redistribution using swapOneVault should work for 1 moo vault --> 1 moo vault", async function () {
+            // This test is to reach 100% coverage for boost.
+            await omnivault.connect(admin).setFeeOnYield(0);
+            await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("100", 6));
+            await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("100", 6));
+            // Swap all to mooLp2
+            await omnivault.connect(admin).redistribute([mooLp2.address], [100], [ethers.constants.AddressZero]);
+
+            await omnivault.connect(admin).swapOneVault(mooLp2.address, [mooLp1.address], [100], [lp1BoostAddress]);
+            expect(await omnivault.getVaultBalanceOf(mooLp2.address)).to.equal(0);
+            expect(Number(await omnivault.getVaultBalanceOf(mooLp1.address))).to.be.greaterThan(0);
 
         })
     })

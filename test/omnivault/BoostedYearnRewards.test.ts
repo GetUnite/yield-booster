@@ -179,6 +179,20 @@ describe("Boosted beefy Omnivault Tests", function () {
             expect(Number(mooLp2Tokens)).greaterThan(Number(mooLp2TokensBefore));
 
         })
+
+        it("Redistribution using swapOneVault should work for 1 moo vault --> 1 moo vault", async function () {
+            // This test is to reach 100% coverage for boost.
+            await omnivault.connect(admin).setFeeOnYield(0);
+            await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("100", 6));
+            await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("100", 6));
+            // Swap all to mooLp2
+            await omnivault.connect(admin).redistribute([yearnLp1.address], [100], [lp2BoostAddress]);
+
+            await omnivault.connect(admin).swapOneVault(yearnLp1.address, [mooLp2.address], [100], [ethers.constants.AddressZero]);
+            expect(await omnivault.getVaultBalanceOf(yearnLp1.address)).to.equal(0);
+            expect(Number(await omnivault.getVaultBalanceOf(mooLp2.address))).to.be.greaterThan(0);
+
+        })
     })
     describe("Integration testing by simulating rising LP value", function () {
         it("Simulate these LPs rising in value", async function () {

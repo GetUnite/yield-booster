@@ -145,6 +145,90 @@ describe("Omnivault Tests", function () {
 
 
     describe("Redistribution tests", function () {
+
+        it("Redistribution using swapOneVault should work for 1 moo vault --> 1 moo vault", async function () {
+            await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("100", 6));
+            await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("100", 6));
+
+            await omnivault.connect(admin).swapOneVault(mooLp1.address, [mooLp2.address], [100], [ethers.constants.AddressZero]);
+            expect(await omnivault.getVaultBalanceOf(mooLp1.address)).to.equal(0);
+            expect(Number(await omnivault.getVaultBalanceOf(mooLp2.address))).to.be.greaterThan(0);
+
+        })
+        it("Redistribution using swapOneVault should work for 1 moo vault --> 2 moo vaults. ", async function () {
+            await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("100", 6));
+            await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("100", 6));
+
+            await omnivault.connect(admin).swapOneVault(mooLp1.address, [mooLp2.address, mooLp3.address], [50, 50], [ethers.constants.AddressZero, ethers.constants.AddressZero]);
+            expect(await omnivault.getVaultBalanceOf(mooLp1.address)).to.equal(0);
+            expect(Number(await omnivault.getVaultBalanceOf(mooLp2.address))).to.be.greaterThan(0);
+            expect(Number(await omnivault.getVaultBalanceOf(mooLp3.address))).to.be.greaterThan(0);
+        })
+
+        it("Redistribution using swapOneVault should work if we had 2 vaults before and we wanted to go down to one", async function () {
+            await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("100", 6));
+            await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("100", 6));
+            // Say that we are in 2 vaults
+            await omnivault.connect(admin).redistribute([mooLp2.address, mooLp3.address], [50, 50], [ethers.constants.AddressZero, ethers.constants.AddressZero]);
+
+            expect(Number(await omnivault.getVaultBalanceOf(mooLp2.address))).to.be.greaterThan(0);
+            expect(Number(await omnivault.getVaultBalanceOf(mooLp3.address))).to.be.greaterThan(0);
+
+            // Now swap out vault 2 for vault 3 completely.
+            await omnivault.connect(admin).swapOneVault(mooLp2.address, [mooLp3.address], [100], [ethers.constants.AddressZero]);
+            expect(await omnivault.getVaultBalanceOf(mooLp2.address)).to.equal(0);
+            expect(Number(await omnivault.getVaultBalanceOf(mooLp3.address))).to.be.greaterThan(0);
+        })
+
+        it("Redistribution using swapOneVault should work if we had 2 vaults before and we wanted to go down to one. Many depositors should be able to claim the correct amount", async function () {
+            for (let i = 0; i < 10; i++) {
+                await usdc.connect(signers[i]).approve(omnivault.address, ethers.utils.parseUnits("1000", 6));
+                await omnivault.connect(signers[i]).deposit(usdc.address, ethers.utils.parseUnits("1000", 6));
+            }
+            // Say that we are in 2 vaults
+            await omnivault.connect(admin).redistribute([mooLp2.address, mooLp3.address], [50, 50], [ethers.constants.AddressZero, ethers.constants.AddressZero]);
+
+            expect(Number(await omnivault.getVaultBalanceOf(mooLp2.address))).to.be.greaterThan(0);
+            expect(Number(await omnivault.getVaultBalanceOf(mooLp3.address))).to.be.greaterThan(0);
+
+            // Now swap out vault 2 for vault 3 completely.
+            await omnivault.connect(admin).swapOneVault(mooLp2.address, [mooLp3.address], [100], [ethers.constants.AddressZero]);
+            expect(await omnivault.getVaultBalanceOf(mooLp2.address)).to.equal(0);
+            expect(Number(await omnivault.getVaultBalanceOf(mooLp3.address))).to.be.greaterThan(0);
+
+            for (let i = 0; i < 10; i++) {
+                // Trying to withdraw 100 should give you something around 1000
+                let newBalance = await omnivault.connect(signers[i]).callStatic.withdraw(usdc.address, 100);
+                expect(Number(newBalance)).to.be.closeTo(ethers.utils.parseUnits("1000", 6), ethers.utils.parseUnits("1", 6));
+                // Users should be able to withdraw a very similar amount after these swaps.
+            }
+        })
+
+        it("Redistribution using swapOneVault should work if we had 2 vaults before and we wanted to just swap one out for another. Many depositors should be able to claim the correct amount", async function () {
+            for (let i = 0; i < 10; i++) {
+                await usdc.connect(signers[i]).approve(omnivault.address, ethers.utils.parseUnits("1000", 6));
+                await omnivault.connect(signers[i]).deposit(usdc.address, ethers.utils.parseUnits("1000", 6));
+            }
+            // Say that we are in 2 vaults
+            await omnivault.connect(admin).redistribute([mooLp2.address, mooLp3.address], [50, 50], [ethers.constants.AddressZero, ethers.constants.AddressZero]);
+
+            expect(Number(await omnivault.getVaultBalanceOf(mooLp2.address))).to.be.greaterThan(0);
+            expect(Number(await omnivault.getVaultBalanceOf(mooLp3.address))).to.be.greaterThan(0);
+
+            // Now swap out vault 2 for vault 3 completely.
+            await omnivault.connect(admin).swapOneVault(mooLp2.address, [mooLp1.address, mooLp3.address], [50, 50], [ethers.constants.AddressZero, ethers.constants.AddressZero]);
+            expect(await omnivault.getVaultBalanceOf(mooLp2.address)).to.equal(0);
+            expect(Number(await omnivault.getVaultBalanceOf(mooLp1.address))).to.be.greaterThan(0);
+            expect(Number(await omnivault.getVaultBalanceOf(mooLp3.address))).to.be.greaterThan(0);
+
+            for (let i = 0; i < 10; i++) {
+                // Trying to withdraw 100 should give you something around 1000
+                let newBalance = await omnivault.connect(signers[i]).callStatic.withdraw(usdc.address, 100);
+                expect(Number(newBalance)).to.be.closeTo(ethers.utils.parseUnits("1000", 6), ethers.utils.parseUnits("1", 6));
+                // Users should be able to withdraw a very similar amount after these swaps.
+            }
+        })
+
         it("Remain in same vault. Should do nothing since this vault isn't boosted (separate tests for boosted rewards", async function () {
             await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("100", 6));
             await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("100", 6));
