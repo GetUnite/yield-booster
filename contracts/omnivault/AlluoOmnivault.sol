@@ -39,6 +39,17 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
     uint256 public lastYieldSkimTimestamp;
     uint256 public skimYieldPeriod;
 
+    event BeforeRedistribution(
+        address[] oldVaults,
+        uint256[] oldVaultPercents,
+        uint256 tvl,
+        bool isSwapOneVault
+    );
+
+    event AfterRedistribution(address[] newVaults, uint256[] newVaultPercents);
+
+    event FeeSkimmed(uint256 feeAmountAdded);
+
     modifier enforceYieldSkimming() {
         if (block.timestamp >= lastYieldSkimTimestamp + skimYieldPeriod) {
             skimYieldFeeAndSendToAdmin();
@@ -262,8 +273,11 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
                     lpTokensToWithdraw,
                     0
                 );
+
                 // Update admin fees mapping
                 adminFees[primaryToken] += feeInPrimaryToken;
+                emit FeeSkimmed(feeInPrimaryToken);
+
                 // Update user balances
                 for (uint256 j = 0; j < activeUsers.length(); j++) {
                     address userAddress = activeUsers.at(j);
@@ -425,6 +439,13 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
             0
         );
 
+        emit BeforeRedistribution(
+            getActiveUnderlyingVaults(),
+            getUnderlyingVaultsPercents(),
+            primaryTokens,
+            true
+        );
+
         // Step 2: Swap all of these primary tokens to the correct proportion of new moo tokens.
         uint256 remainingPrimaryTokens = primaryTokens;
         IERC20MetadataUpgradeable(primaryToken).safeIncreaseAllowance(
@@ -503,6 +524,11 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
             );
             _boostIfApplicable(newVaultAddress);
         }
+
+        emit AfterRedistribution(
+            getActiveUnderlyingVaults(),
+            getUnderlyingVaultsPercents()
+        );
     }
 
     function redistribute(
@@ -547,6 +573,14 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
             totalPrimaryTokens += primaryTokens;
             primaryTokensList[i] = primaryTokens;
         }
+
+        emit BeforeRedistribution(
+            getActiveUnderlyingVaults(),
+            getUnderlyingVaultsPercents(),
+            totalPrimaryTokens,
+            false
+        );
+
         // Step 2: Swap all of these primary tokens to the correct proportion of new moo tokens.
         uint256 remainingPrimaryTokens = totalPrimaryTokens;
         IERC20MetadataUpgradeable(primaryToken).safeIncreaseAllowance(
@@ -626,6 +660,11 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
             );
             _boostIfApplicable(newVaultAddress);
         }
+
+        emit AfterRedistribution(
+            getActiveUnderlyingVaults(),
+            getUnderlyingVaultsPercents()
+        );
     }
 
     function claimAdminFees()
@@ -688,7 +727,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
     }
 
     function getActiveUnderlyingVaults()
-        external
+        public
         view
         returns (address[] memory)
     {
@@ -702,7 +741,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
     }
 
     function getUnderlyingVaultsPercents()
-        external
+        public
         view
         returns (uint256[] memory)
     {

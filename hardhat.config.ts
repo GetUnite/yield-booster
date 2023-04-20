@@ -13,13 +13,14 @@ const config: HardhatUserConfig = {
     compilers: [
 
       {
-        version: "0.8.19",
+        version: "0.8.17",
         settings: {
-          viaIR: true,
+          // viaIR: true,
           optimizer: {
             enabled: true,
             runs: 29000,
-          },
+
+          }
         },
       }
     ]
