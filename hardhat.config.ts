@@ -51,9 +51,9 @@ const config: HardhatUserConfig = {
     },
 
     optimisticEthereum: {
-      url: process.env.OPTIMISM_FORKING_URL,
+      url: process.env.OPTIMISM_URL,
       gasPrice: "auto",
-      accounts: process.env.ALLU_DEPLOYER_PRIVATE_KEY != undefined ? [process.env.ALLU_DEPLOYER_PRIVATE_KEY] : { mnemonic: process.env.MNEMONIC as string }
+      accounts: process.env.ALLUO_DEPLOYER_PRIVATE_KEY != undefined ? [process.env.ALLUO_DEPLOYER_PRIVATE_KEY] : { mnemonic: process.env.MNEMONIC as string }
 
     },
     // TESTNETS

@@ -26,7 +26,7 @@ describe("Boosted beefy Omnivault Tests", function () {
             params: [{
                 forking: {
                     enabled: true,
-                    jsonRpcUrl: process.env.OPTIMISM_FORKING_URL as string,
+                    jsonRpcUrl: process.env.OPTIMISM_URL as string,
                     //you can fork from last block by commenting next line
                     blockNumber: 88995824,
                 },
