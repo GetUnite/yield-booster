@@ -643,11 +643,14 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         }
 
         // Step 4: Update state variables and remove old vault balance values.
-        for (uint256 i = 0; i < activeUnderlyingVaults.length(); i++) {
-            address vaultAddress = activeUnderlyingVaults.at(i);
+        address[] memory _activeUnderlyingVaults = activeUnderlyingVaults
+            .values();
+        for (uint256 i = 0; i < _activeUnderlyingVaults.length; i++) {
+            address vaultAddress = _activeUnderlyingVaults[i];
             activeUnderlyingVaults.remove(vaultAddress);
             underlyingVaultsPercents[vaultAddress] = 0;
         }
+
         for (uint256 i = 0; i < newVaults.length; i++) {
             address newVaultAddress = newVaults[i];
             activeUnderlyingVaults.add(newVaultAddress);
@@ -801,4 +804,12 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         rewardTokenToMinSwapAmount[_rewardToken] = _minAmount;
     }
+
+    function removeActiveUnderlyingVault(
+        address _vaultAddress
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        activeUnderlyingVaults.remove(_vaultAddress);
+        underlyingVaultsPercents[_vaultAddress] = 0;
+    }
+
 }
