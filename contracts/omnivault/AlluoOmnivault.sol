@@ -256,11 +256,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
                 uint256 additionalYield = ((currentPricePerFullShare -
                     previousPricePerFullShare) *
                     getVaultBalanceOf(vaultAddress));
-                if (additionalYield == 0) {
-                    // No additional yield
-                    console.log("No additional yield");
-                    continue;
-                }
+
                 uint256 feeInUnderlyingToken = (additionalYield * feeOnYield) /
                     10000;
                 uint256 lpTokensToWithdraw = feeInUnderlyingToken /
@@ -268,6 +264,12 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
                 console.log("Additional yield", additionalYield);
                 console.log("Fee in underlying token", feeInUnderlyingToken);
                 console.log("Lp tokens to withdraw", lpTokensToWithdraw);
+
+                if (lpTokensToWithdraw == 0) {
+                    // No additional yield
+                    console.log("No additional yield");
+                    continue;
+                }
                 IERC20MetadataUpgradeable(vaultAddress).safeIncreaseAllowance(
                     address(exchangeAddress),
                     lpTokensToWithdraw

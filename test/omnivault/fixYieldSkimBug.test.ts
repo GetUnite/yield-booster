@@ -20,7 +20,7 @@ describe("Fix skim yield bug", function () {
                     enabled: true,
                     jsonRpcUrl: process.env.OPTIMISM_URL as string,
                     //you can fork from last block by commenting next line
-                    blockNumber: 99006403,
+                    blockNumber: 99387392,
                 },
             },],
         });
@@ -53,10 +53,29 @@ describe("Fix skim yield bug", function () {
         );
         let newProxy = await omniVaultFactory.deploy();
         await newProxy.deployed();
+        // Change upgrade status and upgrade the existing omnivault
+        await omnivault.connect(admin).changeUpgradeStatus(true);
+        await omnivault.connect(admin).grantRole(await omnivault.UPGRADER_ROLE(), admin.address)
+        await omnivault.connect(admin).upgradeTo(newProxy.address);
 
 
-        // await expect(omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("10000", 6))).to.be.reverted
+        // Deposit and withdraw
+        await usdc.connect(signers[0]).approve(omnivault.address, ethers.utils.parseUnits("100000", 6));
+        await omnivault.connect(signers[0]).deposit(usdc.address, ethers.utils.parseUnits("10000", 6),);
 
+    })
+
+    it("Should upgrade the current contract, remove the bug and then check that deposits work as usual.", async () => {
+        const omniVaultFactory: AlluoOmnivault__factory = await ethers.getContractFactory(
+            "AlluoOmnivault"
+        );
+
+
+        omnivault = await ethers.getContractAt("AlluoOmnivault", "0x2682c8057426FE5c462237eb3bfcfEDFb9539004")
+
+
+        let newProxy = await omniVaultFactory.deploy();
+        await newProxy.deployed();
         // Change upgrade status and upgrade the existing omnivault
         await omnivault.connect(admin).changeUpgradeStatus(true);
         await omnivault.connect(admin).grantRole(await omnivault.UPGRADER_ROLE(), admin.address)
