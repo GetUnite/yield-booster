@@ -50,6 +50,15 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
 
     event FeeSkimmed(uint256 feeAmountAdded);
 
+    event Deposit(address user, uint256 amount, address token);
+
+    event Withdraw(
+        address user,
+        uint256 percentage,
+        uint256 amount,
+        address token
+    );
+
     modifier enforceYieldSkimming() {
         if (block.timestamp >= lastYieldSkimTimestamp + skimYieldPeriod) {
             skimYieldFeeAndSendToAdmin();
@@ -115,6 +124,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         if (activeUsers.contains(msg.sender) == false) {
             activeUsers.add(msg.sender);
         }
+        emit Deposit(msg.sender, amount, tokenAddress);
     }
 
     // Only in primaryTokens
@@ -224,6 +234,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
             msg.sender,
             totalTokens
         );
+        emit Withdraw(msg.sender, percentage, totalTokens, tokenAddress);
     }
 
     function skimYieldFeeAndSendToAdmin() public {
@@ -245,6 +256,11 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
                 uint256 additionalYield = ((currentPricePerFullShare -
                     previousPricePerFullShare) *
                     getVaultBalanceOf(vaultAddress));
+                if (additionalYield == 0) {
+                    // No additional yield
+                    console.log("No additional yield");
+                    continue;
+                }
                 uint256 feeInUnderlyingToken = (additionalYield * feeOnYield) /
                     10000;
                 uint256 lpTokensToWithdraw = feeInUnderlyingToken /
@@ -811,5 +827,4 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         activeUnderlyingVaults.remove(_vaultAddress);
         underlyingVaultsPercents[_vaultAddress] = 0;
     }
-
 }
