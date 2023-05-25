@@ -6,7 +6,7 @@ import {IBeefyBoost} from "./interfaces/IBeefyBoost.sol";
 import {IBeefyVault} from "./interfaces/IBeefyVault.sol";
 import {IYearnBoost} from "./interfaces/IYearnBoost.sol";
 import {IYearnVault} from "./interfaces/IYearnVault.sol";
-
+import {IWrappedEther} from "./interfaces/IWrappedEther.sol";
 import {AlluoUpgradeableBase} from "../AlluoUpgradeableBase.sol";
 
 import {SafeERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
@@ -39,6 +39,9 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
     uint256 public lastYieldSkimTimestamp;
     uint256 public skimYieldPeriod;
 
+    IWrappedEther public constant WETH =
+        IWrappedEther(0x4200000000000000000000000000000000000006);
+
     event BeforeRedistribution(
         address[] oldVaults,
         uint256[] oldVaultPercents,
@@ -65,6 +68,8 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         }
         _;
     }
+
+    receive() external payable {}
 
     function initialize(
         address _exchangeAddress,
@@ -110,15 +115,22 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
     function deposit(
         address tokenAddress,
         uint256 amount
-    ) external override enforceYieldSkimming {
+    ) external payable override enforceYieldSkimming {
         // First transfer the toknes to the contract. Then use the exchange to exchange it to the activeUnderlyingVaults
         // Then initialize the user's vaultBalance based on balance before and balance after.
         require(amount > 0, "!GT0");
-        IERC20MetadataUpgradeable(tokenAddress).safeTransferFrom(
-            msg.sender,
-            address(this),
-            amount
-        );
+
+        if (tokenAddress == address(0)) {
+            require(msg.value == amount, "!SAME");
+            WETH.deposit{value: msg.value}();
+            tokenAddress = address(WETH);
+        } else {
+            IERC20MetadataUpgradeable(tokenAddress).safeTransferFrom(
+                msg.sender,
+                address(this),
+                amount
+            );
+        }
 
         _iterativeDeposit(tokenAddress, amount, true);
         if (activeUsers.contains(msg.sender) == false) {
@@ -219,21 +231,31 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         }
 
         if (tokenAddress != primaryToken) {
-            IERC20MetadataUpgradeable(primaryToken).safeIncreaseAllowance(
-                address(exchangeAddress),
+            if (tokenAddress == address(0) && primaryToken == address(WETH)) {
+                WETH.withdraw(totalTokens);
+            } else {
+                IERC20MetadataUpgradeable(primaryToken).safeIncreaseAllowance(
+                    address(exchangeAddress),
+                    totalTokens
+                );
+
+                totalTokens = exchangeAddress.exchange(
+                    primaryToken,
+                    tokenAddress,
+                    totalTokens,
+                    0
+                );
+            }
+        }
+        if (tokenAddress == address(0)) {
+            payable(msg.sender).transfer(totalTokens);
+        } else {
+            IERC20MetadataUpgradeable(tokenAddress).safeTransfer(
+                msg.sender,
                 totalTokens
             );
-            totalTokens = exchangeAddress.exchange(
-                primaryToken,
-                tokenAddress,
-                totalTokens,
-                0
-            );
         }
-        IERC20MetadataUpgradeable(tokenAddress).safeTransfer(
-            msg.sender,
-            totalTokens
-        );
+
         emit Withdraw(msg.sender, percentage, totalTokens, tokenAddress);
     }
 
