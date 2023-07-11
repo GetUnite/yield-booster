@@ -4,6 +4,7 @@ import { BigNumber } from "ethers";
 
 import { AlluoOmnivault, AlluoOmnivault__factory, Exchange, IERC20MetadataUpgradeable } from "../../typechain-types";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
+import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 describe("Add support for native ETH deposits", function () {
     let omnivault1: AlluoOmnivault, omnivault2: AlluoOmnivault, omnivault3: AlluoOmnivault, omnivault4: AlluoOmnivault, omnivault5: AlluoOmnivault, omnivault6: AlluoOmnivault, omnivault7: AlluoOmnivault, omnivault8: AlluoOmnivault;
     let signers: SignerWithAddress[];
@@ -12,7 +13,7 @@ describe("Add support for native ETH deposits", function () {
     let exchange: Exchange;
     let admin: SignerWithAddress;
 
-    beforeEach(async () => {
+    async function setNetwork() {
         await network.provider.request({
             method: "hardhat_reset",
             params: [{
@@ -51,6 +52,9 @@ describe("Add support for native ETH deposits", function () {
         for (let i = 0; i < 10; i++) {
             await usdc.connect(usdWhale).transfer(signers[i].address, ethers.utils.parseUnits("100000", 6))
         }
+    }
+    beforeEach(async () => {
+        await loadFixture(setNetwork);
     });
 
     it("Should upgrade the current contract, the deposits and withdraws should work with native eth", async () => {
@@ -71,7 +75,7 @@ describe("Add support for native ETH deposits", function () {
         for (let i = 0; i < omnivaults.length; i++) {
             let signerEthBalanceBefore = await signers[i].getBalance();
             await omnivaults[i].connect(signers[0]).deposit(ethers.constants.AddressZero, ethers.utils.parseEther("10"), { value: ethers.utils.parseEther("10") });
-            await omnivaults[i].connect(signers[0]).withdraw(ethers.constants.AddressZero, 100);
+            await omnivaults[i].connect(signers[0]).withdraw(ethers.constants.AddressZero, 10000);
             let signerEthBalanceAfter = await signers[i].getBalance();
             expect(signerEthBalanceAfter).to.be.closeTo(signerEthBalanceBefore, ethers.utils.parseEther("0.1"))
             console.log("Signer eth balance before: ", ethers.utils.formatEther(signerEthBalanceBefore))

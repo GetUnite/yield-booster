@@ -4,6 +4,7 @@ import { BigNumber } from "ethers";
 
 import { AlluoOmnivault, AlluoOmnivault__factory, Exchange, IERC20MetadataUpgradeable } from "../../typechain-types";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
+import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 describe("Fix enumerable set bug", function () {
     let omnivault: AlluoOmnivault;
     let signers: SignerWithAddress[];
@@ -12,7 +13,7 @@ describe("Fix enumerable set bug", function () {
     let exchange: Exchange;
     let admin: SignerWithAddress;
 
-    beforeEach(async () => {
+    async function setNetwork() {
         await network.provider.request({
             method: "hardhat_reset",
             params: [{
@@ -45,6 +46,9 @@ describe("Fix enumerable set bug", function () {
         for (let i = 0; i < 10; i++) {
             await usdc.connect(usdWhale).transfer(signers[i].address, ethers.utils.parseUnits("100000", 6))
         }
+    }
+    beforeEach(async () => {
+        await loadFixture(setNetwork)
     });
 
     it("Should upgrade the current contract, remove the bug and then check that deposits and withdraws work as usual.", async () => {
@@ -76,7 +80,7 @@ describe("Fix enumerable set bug", function () {
         expect(balance).to.equal(0);
 
         // Withdraw and expect a decently close balance to 10000 usdc
-        let returnAmount = await omnivault.connect(signers[0]).callStatic.withdraw(usdc.address, 100);
+        let returnAmount = await omnivault.connect(signers[0]).callStatic.withdraw(usdc.address, 10000);
         expect(returnAmount).to.be.closeTo(ethers.utils.parseUnits("10000", 6), ethers.utils.parseUnits("50", 6));
     })
 
@@ -94,7 +98,7 @@ describe("Fix enumerable set bug", function () {
         // Remove the bug and then deposit and withdraw
         await omnivault.connect(admin).removeActiveUnderlyingVault("0xe2f035f59de6a952ff699b4edd0f99c466f25fec");
 
-        await omnivault.connect(admin).redistribute([mooLp1.address], [100], [ethers.constants.AddressZero]);
+        await omnivault.connect(admin).redistribute([mooLp1.address], [10000], [ethers.constants.AddressZero]);
 
         let activeVaults = await omnivault.getActiveUnderlyingVaults();
         expect(activeVaults.length).to.equal(1);

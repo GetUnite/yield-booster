@@ -64,7 +64,11 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
 
     modifier enforceYieldSkimming() {
         if (block.timestamp >= lastYieldSkimTimestamp + skimYieldPeriod) {
-            skimYieldFeeAndSendToAdmin();
+            // The reason we need this try catch is because occasionally yield accumulation in the LP is so small that swapping it to primary tokens as a fee fails.
+            // It is not an option to set a mapping for each token to trigger a skim as LP value can vary drastically
+            try this.skimYieldFeeAndSendToAdmin() {} catch {
+                console.log("FSY");
+            }
         }
         _;
     }
@@ -156,7 +160,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         for (uint256 i = 0; i < activeUnderlyingVaults.length(); i++) {
             address vaultAddress = activeUnderlyingVaults.at(i);
             uint256 vaultPercent = underlyingVaultsPercents[vaultAddress];
-            uint256 tokensToSwap = (amount * vaultPercent) / 100;
+            uint256 tokensToSwap = (amount * vaultPercent) / 10000;
             vaultInitialBalances[i] = getVaultBalanceOf(vaultAddress);
             if (i == activeUnderlyingVaults.length() - 1) {
                 tokensToSwap = remainingTokens;
@@ -205,11 +209,11 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         uint256 percentage
     ) external override enforceYieldSkimming returns (uint256 totalTokens) {
         require(percentage > 0, "!GT0");
-        require(percentage <= 100, "!LTE100");
+        require(percentage <= 10000, "!LTE10000");
         for (uint256 i = 0; i < activeUnderlyingVaults.length(); i++) {
             address vaultAddress = activeUnderlyingVaults.at(i);
             uint256 vaultAmount = (balances[msg.sender][vaultAddress] *
-                percentage) / 100;
+                percentage) / 10000;
             // If the vault token is inside the beefy boost, exit that first
 
             _unboostIfApplicable(vaultAddress, vaultAmount);
@@ -226,7 +230,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
             balances[msg.sender][vaultAddress] -= vaultAmount;
         }
 
-        if (percentage == 100) {
+        if (percentage == 10000) {
             activeUsers.remove(msg.sender);
         }
 
@@ -307,6 +311,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
                         );
                     }
                 }
+
                 uint256 feeInPrimaryToken = exchangeAddress.exchange(
                     vaultAddress,
                     primaryToken,
@@ -461,8 +466,11 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         uint256[] memory newPercents,
         address[] memory boostVaults
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        skimYieldFeeAndSendToAdmin();
-
+        // The reason we need this try catch is because occasionally yield accumulation in the LP is so small that swapping it to primary tokens as a fee fails.
+        // It is not an option to set a mapping for each token to trigger a skim as LP value can vary drastically
+        try this.skimYieldFeeAndSendToAdmin() {} catch {
+            console.log("FSY");
+        }
         // Step 1: Swap each of the omnivault's tokens to the primary token and note down.
 
         uint256 primaryTokens = _unboostAllAndSwapRewards(oldVault);
@@ -497,7 +505,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
 
         for (uint256 i = 0; i < newVaults.length; i++) {
             uint256 percent = newPercents[i];
-            uint256 primaryTokensToSwap = (primaryTokens * percent) / 100;
+            uint256 primaryTokensToSwap = (primaryTokens * percent) / 10000;
             if (i == newVaults.length - 1) {
                 primaryTokensToSwap = remainingPrimaryTokens;
             } else {
@@ -555,7 +563,7 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
             }
             underlyingVaultsPercents[newVaultAddress] +=
                 (newPercents[i] * oldVaultPercentage) /
-                100;
+                10000;
             if (boostVaults[i] != address(0)) {
                 vaultToBoost[newVaultAddress] = boostVaults[i];
             }
@@ -580,7 +588,11 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
             newVaults.length == newPercents.length,
             "Mismatch in vaults and percents lengths"
         );
-        skimYieldFeeAndSendToAdmin();
+        // The reason we need this try catch is because occasionally yield accumulation in the LP is so small that swapping it to primary tokens as a fee fails.
+        // It is not an option to set a mapping for each token to trigger a skim as LP value can vary drastically
+        try this.skimYieldFeeAndSendToAdmin() {} catch {
+            console.log("FSY");
+        }
         if (newVaults.length == 0) {
             _harvestAndCreditUsers();
             return;
@@ -629,7 +641,8 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
         );
         for (uint256 i = 0; i < newVaults.length; i++) {
             uint256 percent = newPercents[i];
-            uint256 primaryTokensToSwap = (totalPrimaryTokens * percent) / 100;
+            uint256 primaryTokensToSwap = (totalPrimaryTokens * percent) /
+                10000;
             if (i == newVaults.length - 1) {
                 primaryTokensToSwap = remainingPrimaryTokens;
             } else {
@@ -850,5 +863,15 @@ contract AlluoOmnivault is AlluoUpgradeableBase, IAlluoOmnivault {
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
         activeUnderlyingVaults.remove(_vaultAddress);
         underlyingVaultsPercents[_vaultAddress] = 0;
+    }
+
+    // SHOULD ONLY BE CALLED ONCE!!!
+    function migrateToHigherPrecision() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        for (uint256 i = 0; i < activeUnderlyingVaults.length(); i++) {
+            address vaultAddress = activeUnderlyingVaults.at(i);
+            underlyingVaultsPercents[vaultAddress] =
+                underlyingVaultsPercents[vaultAddress] *
+                100;
+        }
     }
 }
